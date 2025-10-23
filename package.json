@@ -1,0 +1,22 @@
+{
+  "name": "mau-auction-platform",
+  "version": "1.0.0",
+  "description": "MAU Auction Platform - Full Stack Application",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd server && npm run dev",
+    "build": "cd frontend && npm run build",
+    "install:all": "npm install && cd frontend && npm install && cd ../server && npm install",
+    "seed": "cd server && npm run seed",
+    "start": "cd server && npm start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "workspaces": [
+    "frontend",
+    "server"
+  ]
+}
