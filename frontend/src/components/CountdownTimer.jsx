@@ -41,7 +41,7 @@ const CountdownTimer = ({ endTime, onEnd }) => {
   return (
     <span className={`text-sm font-medium ${
       isEnded 
-        ? 'text-red-600' 
+        ? 'text-red-500' 
         : isUrgent 
           ? 'text-orange-600' 
           : 'text-gray-600'
