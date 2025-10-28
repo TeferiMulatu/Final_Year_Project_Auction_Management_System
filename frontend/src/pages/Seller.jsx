@@ -4,10 +4,15 @@ import ProtectedRoute from '../components/ProtectedRoute'
 import api from '../services/api'
 
 const SellerContent = () => {
+  // Authentication context to get current user info
   const { user } = useAuth()
+  
+  // State for managing auctions data and UI states
   const [auctions, setAuctions] = useState([])
   const [loading, setLoading] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  
+  // State for new auction form data
   const [newAuction, setNewAuction] = useState({
     title: '',
     description: '',
@@ -17,10 +22,12 @@ const SellerContent = () => {
     ends_at: ''
   })
 
+  // Load auctions when component mounts
   useEffect(() => {
     loadAuctions()
   }, [])
 
+  // Function to fetch seller's auctions from API
   const loadAuctions = async () => {
     setLoading(true)
     try {
@@ -33,10 +40,16 @@ const SellerContent = () => {
     }
   }
 
+  // Handle form submission for creating new auction
   const handleCreateAuction = async (e) => {
     e.preventDefault()
     try {
-      await api.post('/auctions', newAuction)
+      const payload = {
+        ...newAuction,
+        start_price: newAuction.start_price ? Number(newAuction.start_price) : undefined,
+      }
+      await api.post('/auctions', payload)
+      // Reset form and refresh auctions list
       setNewAuction({
         title: '',
         description: '',
@@ -48,10 +61,14 @@ const SellerContent = () => {
       setShowCreateForm(false)
       loadAuctions()
     } catch (error) {
+      const apiData = error.response?.data
+      const message = apiData?.errors?.[0]?.msg || apiData?.message || 'Failed to create auction'
       console.error('Failed to create auction:', error)
+      alert(message)
     }
   }
 
+  // Helper function to get CSS classes based on auction status
   const getStatusColor = (status) => {
     switch (status) {
       case 'APPROVED': return 'bg-green-100 text-green-800'
@@ -61,6 +78,7 @@ const SellerContent = () => {
     }
   }
 
+  // Calculate remaining time for auction countdown
   const calculateTimeLeft = (endsAt) => {
     const endTime = new Date(endsAt).getTime()
     const now = new Date().getTime()
@@ -75,6 +93,7 @@ const SellerContent = () => {
     return `${hours}h ${minutes}m ${seconds}s`
   }
 
+  // Format date for display
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -85,6 +104,7 @@ const SellerContent = () => {
 
   return (
     <div className="max-w-6xl mx-auto p-4">
+      {/* Header section with dashboard title and create button */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-semibold">Seller Dashboard</h1>
         <button
@@ -95,10 +115,12 @@ const SellerContent = () => {
         </button>
       </div>
 
+      {/* Create Auction Form - Conditionally rendered */}
       {showCreateForm && (
         <div className="bg-white p-6 rounded-lg shadow-md mb-6">
           <h2 className="text-lg font-medium mb-4">Create New Auction</h2>
           <form onSubmit={handleCreateAuction} className="space-y-4">
+            {/* Title and Category inputs */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -135,6 +157,7 @@ const SellerContent = () => {
               </div>
             </div>
             
+            {/* Description textarea */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Description
@@ -149,6 +172,7 @@ const SellerContent = () => {
               />
             </div>
             
+            {/* Image URL, Starting Price, and End Date inputs */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -192,6 +216,7 @@ const SellerContent = () => {
               </div>
             </div>
             
+            {/* Form action buttons */}
             <div className="flex gap-3">
               <button
                 type="submit"
@@ -211,26 +236,31 @@ const SellerContent = () => {
         </div>
       )}
 
+      {/* Auctions List Section */}
       <div className="bg-white rounded-lg shadow-md">
         <div className="p-6 border-b">
           <h2 className="text-lg font-medium">My Auctions</h2>
         </div>
         
+        {/* Loading state */}
         {loading ? (
           <div className="p-6 text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
             <p className="mt-2 text-gray-600">Loading auctions...</p>
           </div>
         ) : auctions.length === 0 ? (
+          /* Empty state */
           <div className="p-6 text-center text-gray-500">
             <p>No auctions created yet.</p>
             <p className="text-sm">Create your first auction to get started!</p>
           </div>
         ) : (
+          /* Auctions grid */
           <div className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {auctions.map((auction) => (
                 <div key={auction.id} className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+                  {/* Auction image with status badge */}
                   <div className="relative">
                     <img
                       src={auction.image_url}
@@ -244,6 +274,7 @@ const SellerContent = () => {
                     </div>
                   </div>
                   
+                  {/* Auction details */}
                   <div className="p-4">
                     <div className="flex items-start justify-between mb-2">
                       <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
@@ -259,6 +290,7 @@ const SellerContent = () => {
                       {auction.description}
                     </p>
                     
+                    {/* Auction metrics */}
                     <div className="space-y-2 border-t pt-3">
                       <div className="flex justify-between items-center">
                         <span className="text-sm font-medium text-gray-700">Current Price</span>
@@ -290,6 +322,7 @@ const SellerContent = () => {
   )
 }
 
+// Protected route wrapper - only SELLER role can access
 const Seller = () => (
   <ProtectedRoute roles={['SELLER']}>
     <SellerContent />

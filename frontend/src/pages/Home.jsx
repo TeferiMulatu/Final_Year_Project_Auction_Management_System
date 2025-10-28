@@ -4,20 +4,23 @@ import api from '../services/api'
 import CountdownTimer from '../components/CountdownTimer'
 
 const Home = () => {
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState('')
-  const [categories, setCategories] = useState([])
+  // State for managing auctions data and UI states
+  const [items, setItems] = useState([]) // List of all auctions
+  const [loading, setLoading] = useState(false) // Loading state for API calls
+  const [searchTerm, setSearchTerm] = useState('') // Search input value
+  const [selectedCategory, setSelectedCategory] = useState('') // Selected category filter
+  const [categories, setCategories] = useState([]) // Unique categories from auctions
 
+  // Load auctions data when component mounts
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       try {
+        // Fetch all auctions from API
         const { data } = await api.get('/auctions')
         setItems(data)
         
-        // Extract unique categories
+        // Extract unique categories from auction data for filter dropdown
         const uniqueCategories = [...new Set(data.map(item => item.category))]
         setCategories(uniqueCategories)
       } finally {
@@ -27,6 +30,7 @@ const Home = () => {
     load()
   }, [])
 
+  // Filter auctions based on search term and selected category
   const filteredItems = items.filter(item => {
     const matchesSearch = item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          item.description.toLowerCase().includes(searchTerm.toLowerCase())
@@ -36,14 +40,16 @@ const Home = () => {
 
   return (
     <div className="max-w-6xl mx-auto p-4">
+      {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Active Auctions</h1>
         <p className="text-gray-600">Discover amazing items up for auction</p>
       </div>
 
-      {/* Search and Filter */}
+      {/* Search and Filter Section */}
       <div className="mb-6 bg-white p-4 rounded-lg shadow-sm border">
         <div className="flex flex-col md:flex-row gap-4">
+          {/* Search Input */}
           <div className="flex-1">
             <input
               type="text"
@@ -53,6 +59,7 @@ const Home = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          {/* Category Filter Dropdown */}
           <div className="md:w-48">
             <select
               className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -68,19 +75,23 @@ const Home = () => {
         </div>
       </div>
 
-      {/* Results count */}
+      {/* Results Count */}
       <div className="mb-4">
         <p className="text-sm text-gray-600">
           Showing {filteredItems.length} of {items.length} auctions
         </p>
       </div>
 
+      {/* Loading State */}
       {loading ? (
         <div className="flex justify-center items-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
           <span className="ml-3 text-gray-600">Loading auctions...</span>
         </div>
-      ) : filteredItems.length === 0 ? (
+      ) : 
+      
+      /* Empty State */
+      filteredItems.length === 0 ? (
         <div className="text-center py-12">
           <div className="text-gray-400 text-6xl mb-4">🔍</div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">No auctions found</h3>
@@ -90,6 +101,7 @@ const Home = () => {
               : 'No auctions are currently available'
             }
           </p>
+          {/* Clear Filters Button - Only shown when filters are active */}
           {(searchTerm || selectedCategory) && (
             <button
               onClick={() => {
@@ -102,7 +114,10 @@ const Home = () => {
             </button>
           )}
         </div>
-      ) : (
+      ) : 
+      
+      /* Auctions Grid */
+      (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredItems.map(auction => (
             <Link 
@@ -110,6 +125,7 @@ const Home = () => {
               to={`/auction/${auction.id}`} 
               className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow duration-200"
             >
+              {/* Auction Image with Category Badge */}
               <div className="relative">
                 <img 
                   src={auction.image_url} 
@@ -123,11 +139,13 @@ const Home = () => {
                 </div>
               </div>
               
+              {/* Auction Details */}
               <div className="p-4">
                 <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">
                   {auction.title}
                 </h3>
                 
+                {/* Auction Metrics */}
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Current Price</span>
@@ -138,9 +156,11 @@ const Home = () => {
                   
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Time Left</span>
+                    {/* Countdown Timer Component */}
                     <CountdownTimer endTime={auction.ends_at} />
                   </div>
                   
+                  {/* Seller and End Date Info */}
                   <div className="flex justify-between items-center text-xs text-gray-500">
                     <span>By {auction.seller_name}</span>
                     <span>{new Date(auction.ends_at).toLocaleDateString()}</span>
@@ -156,5 +176,3 @@ const Home = () => {
 }
 
 export default Home
-
-

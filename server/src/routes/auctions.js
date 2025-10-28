@@ -25,6 +25,19 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Seller: get my auctions (place before parameterized routes to avoid shadowing)
+router.get('/my-auctions', authenticate, authorize(['SELLER']), async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT * FROM auctions WHERE seller_id = ? ORDER BY created_at DESC',
+      [req.user.id]
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ message: 'Failed to fetch auctions' });
+  }
+});
+
 // Public: auction detail
 router.get('/:id', async (req, res) => {
   try {
@@ -46,16 +59,16 @@ router.post(
   authenticate,
   authorize(['SELLER']),
   [
-    body('title').isString().isLength({ min: 3 }),
-    body('description').isString().isLength({ min: 10 }),
-    body('category').isString(),
-    body('image_url').isURL(),
-    body('start_price').isFloat({ gt: 0 }),
-    body('ends_at').isISO8601()
+    body('title').isString().isLength({ min: 3 }).withMessage('Title must be at least 3 characters'),
+    body('description').isString().isLength({ min: 10 }).withMessage('Description must be at least 10 characters'),
+    body('category').isString().withMessage('Category is required'),
+    body('image_url').isURL().withMessage('Image URL must be a valid URL'),
+    body('start_price').isFloat({ gt: 0 }).withMessage('Starting price must be greater than 0'),
+    body('ends_at').isISO8601().withMessage('End date must be a valid ISO 8601 date')
   ],
   async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation error', errors: errors.array() });
     const { title, description, category, image_url, start_price, ends_at } = req.body;
     try {
       const [result] = await pool.query(
@@ -69,19 +82,6 @@ router.post(
     }
   }
 );
-
-// Seller: get my auctions
-router.get('/my-auctions', authenticate, authorize(['SELLER']), async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      'SELECT * FROM auctions WHERE seller_id = ? ORDER BY created_at DESC',
-      [req.user.id]
-    );
-    res.json(rows);
-  } catch (e) {
-    res.status(500).json({ message: 'Failed to fetch auctions' });
-  }
-});
 
 export default router;
 

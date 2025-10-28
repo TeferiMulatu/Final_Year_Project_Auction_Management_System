@@ -3,43 +3,58 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 const Login = () => {
-  const [formData, setFormData] = useState({ email: '', password: '' })
+  // State for login form data - only email and password needed
+  const [formData, setFormData] = useState({ 
+    email: '', 
+    password: '' 
+  })
+  
+  // State for error messages and loading status
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  
+  // Navigation hook for redirecting after successful login
   const navigate = useNavigate()
+  
+  // Authentication function from context
   const { login } = useAuth()
 
+  // Handle input changes and clear any existing errors
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
-    setError('')
+    setError('') // Clear error when user starts typing
   }
 
+  // Handle form submission for user login
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
+    e.preventDefault() // Prevent default form submission
+    setLoading(true) // Start loading state
+    setError('') // Reset error state
 
+    // Attempt to login with provided credentials
     const result = await login(formData.email, formData.password)
     
     if (result.success) {
-      // Redirect based on role
+      // Redirect user based on their role after successful login
       if (result.user.role === 'ADMIN') {
-        navigate('/admin')
+        navigate('/admin') // Admin dashboard
       } else if (result.user.role === 'SELLER') {
-        navigate('/seller')
+        navigate('/seller') // Seller dashboard
       } else {
-        navigate('/')
+        navigate('/') // Default route for BIDDER - auction listing
       }
     } else {
-      setError(result.error,"cant login")
+      // Display login error from API
+      setError(result.error, "cant login")
     }
     
-    setLoading(false)
+    setLoading(false) // End loading state
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
+        {/* Header Section */}
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             Sign in to your account
@@ -51,8 +66,12 @@ const Login = () => {
             </Link>
           </p>
         </div>
+        
+        {/* Login Form */}
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {/* Input Fields Container with rounded corners */}
           <div className="rounded-md shadow-sm -space-y-px">
+            {/* Email Input Field */}
             <div>
               <label htmlFor="email" className="sr-only">
                 Email address
@@ -69,6 +88,8 @@ const Login = () => {
                 onChange={handleChange}
               />
             </div>
+            
+            {/* Password Input Field */}
             <div>
               <label htmlFor="password" className="sr-only">
                 Password
@@ -87,10 +108,12 @@ const Login = () => {
             </div>
           </div>
 
+          {/* Error Message Display */}
           {error && (
             <div className="text-red-600 text-sm text-center">{error}</div>
           )}
 
+          {/* Submit Button */}
           <div>
             <button
               type="submit"
@@ -101,6 +124,7 @@ const Login = () => {
             </button>
           </div>
 
+          {/* Demo Accounts Section - Helpful for testing */}
           <div className="text-center text-sm text-gray-600">
             <p className="mb-2">Demo accounts:</p>
             <p>Admin: admin@mau.edu.et / Admin@123</p>

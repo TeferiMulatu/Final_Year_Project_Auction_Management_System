@@ -9,14 +9,19 @@ const router = Router();
 router.post(
   '/register',
   [
-    body('name').isString().isLength({ min: 2 }),
-    body('email').isEmail(),
-    body('password').isLength({ min: 6 }),
-    body('role').isIn(['ADMIN', 'SELLER', 'BIDDER'])
+    body('name')
+      .isString().withMessage('Name must be a string')
+      .isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
+    body('email')
+      .isEmail().withMessage('Please enter a valid email address'),
+    body('password')
+      .isLength({ min: 6 }).withMessage('Password must be at least 6 characters long'),
+    body('role')
+      .isIn(['ADMIN', 'SELLER', 'BIDDER']).withMessage('Role must be ADMIN, SELLER, or BIDDER')
   ],
   async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation error', errors: errors.array() });
     const { name, email, password, role } = req.body;
     try {
       const [existing] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
@@ -35,10 +40,13 @@ router.post(
 
 router.post(
   '/login',
-  [body('email').isEmail(), body('password').isString()],
+  [
+    body('email').isEmail().withMessage('Please enter a valid email address'),
+    body('password').isString().withMessage('Password is required')
+  ],
   async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) return res.status(400).json({ message: 'Validation error', errors: errors.array() });
     const { email, password } = req.body;
     try {
       const [rows] = await pool.query('SELECT id, name, email, password_hash, role, is_active FROM users WHERE email = ?', [email]);
