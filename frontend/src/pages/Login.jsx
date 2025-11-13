@@ -127,9 +127,9 @@ const Login = () => {
           {/* Demo Accounts Section - Helpful for testing */}
           <div className="text-center text-sm text-gray-600">
             <p className="mb-2">Demo accounts:</p>
-            <p>Admin: admin@mau.edu.et / Admin@123</p>
-            <p>Seller: seller@mau.edu.et / Seller@123</p>
-            <p>Bidder: bidder@mau.edu.et / Bidder@123</p>
+            <p>Admin: admin@gmail.com / admin@123</p>
+            <p>Seller: seller@gmail.com / seller@123</p>
+            <p>Bidder: bidder@gmail.com / bidder@123</p>
           </div>
         </form>
       </div>

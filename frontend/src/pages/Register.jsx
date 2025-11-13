@@ -9,7 +9,10 @@ const Register = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'BIDDER' // Default role is BIDDER
+    role: 'BIDDER', // Default role is BIDDER
+    fin_number: '',
+    id_front: null,
+    id_back: null
   })
   
   // State for error messages and loading status
@@ -24,7 +27,13 @@ const Register = () => {
 
   // Handle input changes and clear any existing errors
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value })
+    const { name, value, files } = e.target
+    if (files) {
+      // file input
+      setFormData({ ...formData, [name]: files[0] || null })
+    } else {
+      setFormData({ ...formData, [name]: value })
+    }
     setError('') // Clear error when user starts typing
   }
 
@@ -47,10 +56,20 @@ const Register = () => {
     setLoading(true) // Start loading state
 
     // Destructure form data for API call
-    const { name, email, password, role } = formData
-    
+    const { name, email, password, role, fin_number, id_front, id_back } = formData
+
+    // Build FormData including files
+    const form = new FormData()
+    form.append('name', name)
+    form.append('email', email)
+    form.append('password', password)
+    form.append('role', role)
+    form.append('fin_number', fin_number)
+    if (id_front) form.append('id_front', id_front)
+    if (id_back) form.append('id_back', id_back)
+
     // Attempt to register user
-    const result = await register({ name, email, password, role })
+    const result = await register(form)
     
     if (result.success) {
       // Auto-login after successful registration for better UX
@@ -67,7 +86,7 @@ const Register = () => {
         }
       } else {
         // Handle case where registration succeeds but login fails
-        setError('Registration successful but login failed. Please try logging in.')
+        setError('Registration successful but login failed. Please try logging in.(you can login after Admin Aproves the registration)')
       }
     } else {
       // Display registration error from API
@@ -146,6 +165,46 @@ const Register = () => {
                 <option value="BIDDER">Bidder - Participate in auctions</option>
                 <option value="SELLER">Seller - Create and manage auctions</option>
               </select>
+            </div>
+            {/* FIN Number */}
+            <div>
+              <label htmlFor="fin_number" className="block text-sm font-medium text-gray-700">
+                National ID FIN Number
+              </label>
+              <input
+                id="fin_number"
+                name="fin_number"
+                type="text"
+                required
+                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                placeholder="Enter FIN number"
+                value={formData.fin_number}
+                onChange={handleChange}
+              />
+            </div>
+
+            {/* ID Front/Back Uploads */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Front side of National ID</label>
+              <input
+                type="file"
+                accept="image/*"
+                name="id_front"
+                onChange={handleChange}
+                className="mt-1 w-full"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Back side of National ID</label>
+              <input
+                type="file"
+                accept="image/*"
+                name="id_back"
+                onChange={handleChange}
+                className="mt-1 w-full"
+                required
+              />
             </div>
             
             {/* Password Input */}

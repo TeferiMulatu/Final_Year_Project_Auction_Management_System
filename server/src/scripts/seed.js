@@ -9,6 +9,14 @@ async function run() {
   try {
     await conn.beginTransaction();
 
+    // Drop existing tables to ensure a fresh start
+    // Disable foreign key checks to allow dropping in any order
+    await conn.query('SET FOREIGN_KEY_CHECKS = 0');
+    await conn.query('DROP TABLE IF EXISTS bids');
+    await conn.query('DROP TABLE IF EXISTS auctions');
+    await conn.query('DROP TABLE IF EXISTS users');
+    await conn.query('SET FOREIGN_KEY_CHECKS = 1');
+
     // Create tables
     await conn.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -18,6 +26,9 @@ async function run() {
         password_hash VARCHAR(200) NOT NULL,
         role ENUM('ADMIN','SELLER','BIDDER') NOT NULL,
         is_active TINYINT(1) NOT NULL DEFAULT 1,
+        fin_number VARCHAR(120) DEFAULT NULL,
+        id_front_url VARCHAR(255) DEFAULT NULL,
+        id_back_url VARCHAR(255) DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB;
     `);
@@ -32,10 +43,15 @@ async function run() {
         image_url VARCHAR(255) NOT NULL,
         start_price DECIMAL(10,2) NOT NULL,
         current_price DECIMAL(10,2) NOT NULL,
+        min_increment DECIMAL(10,2) NOT NULL DEFAULT 1.00,
+        max_increment DECIMAL(10,2) DEFAULT NULL,
+        winner_id INT DEFAULT NULL,
+        final_price DECIMAL(10,2) DEFAULT NULL,
         ends_at DATETIME NOT NULL,
-        status ENUM('PENDING','APPROVED','REJECTED') NOT NULL DEFAULT 'PENDING',
+        status ENUM('PENDING','APPROVED','REJECTED','CLOSED') NOT NULL DEFAULT 'PENDING',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (seller_id) REFERENCES users(id)
+        FOREIGN KEY (seller_id) REFERENCES users(id),
+        FOREIGN KEY (winner_id) REFERENCES users(id)
       ) ENGINE=InnoDB;
     `);
 
@@ -52,12 +68,12 @@ async function run() {
     `);
 
     // Seed users
-    const adminPass = await bcrypt.hash('Admin@123', 10);
-    const sellerPass = await bcrypt.hash('Seller@123', 10);
-    const bidderPass = await bcrypt.hash('Bidder@123', 10);
+    const adminPass = await bcrypt.hash('admin@123', 10);
+    const sellerPass = await bcrypt.hash('seller@123', 10);
+    const bidderPass = await bcrypt.hash('bidder@123', 10);
 
     await conn.query(
-      'INSERT IGNORE INTO users (id, name, email, password_hash, role, is_active) VALUES (1, "Admin", "admin@mau.edu.et", ?, "ADMIN", 1), (2, "Seller One", "seller@mau.edu.et", ?, "SELLER", 1), (3, "Bidder One", "bidder@mau.edu.et", ?, "BIDDER", 1)',
+      'INSERT IGNORE INTO users (id, name, email, password_hash, role, is_active, fin_number, id_front_url, id_back_url) VALUES (1, "Admin", "admin@gmail.com", ?, "ADMIN", 1, "ADMINFIN000", NULL, NULL), (2, "Seller One", "seller@gmail.com", ?, "SELLER", 1, "SELLERFIN123", "https://picsum.photos/seed/idfrontseller/400/250", "https://picsum.photos/seed/idbackseller/400/250"), (3, "Bidder One", "bidder@gmail.com", ?, "BIDDER", 1, "BIDDERFIN456", "https://picsum.photos/seed/idfrontbidder/400/250", "https://picsum.photos/seed/idbackbidder/400/250")',
       [adminPass, sellerPass, bidderPass]
     );
 
@@ -65,7 +81,7 @@ async function run() {
     const now = new Date();
     const ends = new Date(now.getTime() + 1000 * 60 * 60 * 24);
     await conn.query(
-      'INSERT IGNORE INTO auctions (id, seller_id, title, description, category, image_url, start_price, current_price, ends_at, status) VALUES (1, 2, "Dell Latitude 7420", "Business laptop in great condition", "Electronics", "https://picsum.photos/seed/laptop/600/400", 300.00, 300.00, ?, "APPROVED"), (2, 2, "Office Chair", "Ergonomic chair with lumbar support", "Furniture", "https://picsum.photos/seed/chair/600/400", 50.00, 50.00, ?, "APPROVED")',
+      'INSERT IGNORE INTO auctions (id, seller_id, title, description, category, image_url, start_price, current_price, min_increment, max_increment, ends_at, status) VALUES (1, 2, "Dell Latitude 7420", "Business laptop in great condition", "Electronics", "https://picsum.photos/seed/laptop/600/400", 300.00, 300.00, 5.00, 100.00, ?, "APPROVED"), (2, 2, "Office Chair", "Ergonomic chair with lumbar support", "Furniture", "https://picsum.photos/seed/chair/600/400", 50.00, 50.00, 2.00, 50.00, ?, "APPROVED")',
       [ends, ends]
     );
 
@@ -73,6 +89,28 @@ async function run() {
     await conn.query(
       'INSERT IGNORE INTO bids (id, auction_id, bidder_id, amount) VALUES (1, 1, 3, 320.00), (2, 1, 3, 350.00)'
     );
+
+    // Ensure auctions.current_price matches highest bid if any
+    await conn.query(`
+      UPDATE auctions a
+      JOIN (
+        SELECT auction_id, MAX(amount) AS maxbid FROM bids GROUP BY auction_id
+      ) b ON a.id = b.auction_id
+      SET a.current_price = b.maxbid, a.final_price = b.maxbid
+      WHERE b.maxbid > a.current_price
+    `);
+
+    // Notifications table
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        message VARCHAR(255) NOT NULL,
+        is_read TINYINT(1) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      ) ENGINE=InnoDB;
+    `);
 
     await conn.commit();
     // eslint-disable-next-line no-console

@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../contexts/ToastContext'
 import ProtectedRoute from '../components/ProtectedRoute'
 import { Link } from 'react-router-dom'
 import api from '../services/api'
+import formatCurrency from '../utils/currency'
 
 const BidderContent = () => {
   // Authentication context to get current user info
   const { user } = useAuth()
+  const { addToast } = useToast()
   
   // State for managing bids data and loading status
   const [bids, setBids] = useState([]) // Array of user's bids
@@ -30,15 +33,23 @@ const BidderContent = () => {
     }
   }
 
-  // Determine the status of a bid based on auction end time and current price
-  const getBidStatus = (auction) => {
+  // Determine the status of a bid based on auction end time, auction status, and winner info
+  const getBidStatus = (bid) => {
+    const auction = bid.auction
     const now = new Date()
     const endTime = new Date(auction.ends_at)
-    
-    // Check if auction has ended
-    if (endTime < now) {
-      // User won if their bid matches the final current price
-      return auction.current_price === auction.bid_amount ? 'Won' : 'Lost'
+
+    // If auction explicitly closed, prefer winner_id check
+    if (auction.status === 'CLOSED' || endTime < now) {
+      // If backend provides winner_id, compare with current user id
+      if (auction.winner_id !== null && auction.winner_id !== undefined) {
+        return Number(auction.winner_id) === Number(user?.id) ? 'Won' : 'Lost'
+      }
+
+      // Fallback: compare the user's bid amount to the final/current price
+      const bidAmount = Number(bid.amount)
+      const finalPrice = auction.final_price ? Number(auction.final_price) : Number(auction.current_price)
+      return bidAmount === finalPrice ? 'Won' : 'Lost'
     }
     return 'Active' // Auction is still ongoing
   }
@@ -50,6 +61,19 @@ const BidderContent = () => {
       case 'Lost': return 'bg-red-100 text-red-800'    // Red for lost auctions
       case 'Active': return 'bg-blue-100 text-blue-800' // Blue for active auctions
       default: return 'bg-gray-100 text-gray-800'      // Gray for unknown status
+    }
+  }
+
+  // Simulate payment for a won auction
+  const payForAuction = async (auction) => {
+    const confirmPay = window.confirm(`Pay ${formatCurrency(auction.current_price)} for ${auction.title}?`)
+    if (!confirmPay) return
+    try {
+      const { data } = await api.post('/payments', { auction_id: auction.id, amount: auction.current_price, method: 'card' })
+      addToast({ message: data.message || 'Payment successful (simulated)', type: 'success' })
+      loadBids()
+    } catch (err) {
+      addToast({ message: err.response?.data?.message || 'Payment failed', type: 'error' })
     }
   }
 
@@ -117,7 +141,7 @@ const BidderContent = () => {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {bids.map((bid) => {
-                  const status = getBidStatus(bid.auction)
+                  const status = getBidStatus(bid)
                   return (
                     <tr key={bid.id} className="hover:bg-gray-50">
                       {/* Auction Item Column with Image and Details */}
@@ -141,12 +165,12 @@ const BidderContent = () => {
                       
                       {/* User's Bid Amount */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        ${Number(bid.amount).toFixed(2)}
+                        {formatCurrency(bid.amount)}
                       </td>
                       
                       {/* Current Auction Price */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ${Number(bid.auction.current_price).toFixed(2)}
+                        {formatCurrency(bid.auction.current_price)}
                       </td>
                       
                       {/* Bid Status Badge */}
@@ -161,14 +185,26 @@ const BidderContent = () => {
                         {new Date(bid.created_at).toLocaleString()}
                       </td>
                       
-                      {/* Action Link to View Auction */}
+                      {/* Action Link to View Auction or Pay if won */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <Link
-                          to={`/auction/${bid.auction.id}`}
-                          className="text-indigo-600 hover:text-indigo-900"
-                        >
-                          View Auction
-                        </Link>
+                        {getBidStatus(bid) === 'Won' ? (
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => payForAuction(bid.auction)}
+                              className="bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-700"
+                            >
+                              Pay
+                            </button>
+                            <Link to={`/auction/${bid.auction.id}`} className="text-indigo-600 hover:text-indigo-900">View</Link>
+                          </div>
+                        ) : (
+                          <Link
+                            to={`/auction/${bid.auction.id}`}
+                            className="text-indigo-600 hover:text-indigo-900"
+                          >
+                            View Auction
+                          </Link>
+                        )}
                       </td>
                     </tr>
                   )
@@ -193,7 +229,7 @@ const BidderContent = () => {
           {/* Auctions Won Card */}
           <div className="bg-white p-6 rounded-lg shadow-md">
             <div className="text-2xl font-bold text-green-600">
-              {bids.filter(bid => getBidStatus(bid.auction) === 'Won').length}
+              {bids.filter(bid => getBidStatus(bid) === 'Won').length}
             </div>
             <div className="text-sm text-gray-600">Auctions Won</div>
           </div>
@@ -201,7 +237,7 @@ const BidderContent = () => {
           {/* Active Bids Card */}
           <div className="bg-white p-6 rounded-lg shadow-md">
             <div className="text-2xl font-bold text-blue-600">
-              {bids.filter(bid => getBidStatus(bid.auction) === 'Active').length}
+              {bids.filter(bid => getBidStatus(bid) === 'Active').length}
             </div>
             <div className="text-sm text-gray-600">Active Bids</div>
           </div>

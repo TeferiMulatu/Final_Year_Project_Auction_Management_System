@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import pool from '../config/db.js';
+import bcrypt from 'bcryptjs';
 import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = Router();
@@ -28,7 +29,7 @@ router.post('/auctions/:id/reject', async (req, res) => {
 // Users management
 router.get('/users', async (_req, res) => {
   try {
-    const [rows] = await pool.query('SELECT id, name, email, role, is_active FROM users');
+    const [rows] = await pool.query('SELECT id, name, email, role, is_active, fin_number, id_front_url, id_back_url FROM users');
     res.json(rows);
   } catch (e) {
     res.status(500).json({ message: 'Failed to fetch users' });
@@ -73,5 +74,28 @@ router.get('/pending-auctions', async (_req, res) => {
 });
 
 export default router;
+
+// Admin: approve a user (activate account)
+router.post('/users/:id/approve', async (req, res) => {
+  try {
+    await pool.query('UPDATE users SET is_active = 1 WHERE id = ?', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ message: 'Failed to approve user' });
+  }
+});
+
+// Admin: reset a user's password
+router.post('/users/:id/reset-password', async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ message: 'Password is required' });
+    const hashed = await bcrypt.hash(password, 10);
+    await pool.query('UPDATE users SET password_hash = ? WHERE id = ?', [hashed, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ message: 'Failed to reset password' });
+  }
+});
 
 

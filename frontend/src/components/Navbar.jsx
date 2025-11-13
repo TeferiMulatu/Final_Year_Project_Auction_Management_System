@@ -1,4 +1,5 @@
 import { Link, NavLink } from 'react-router-dom'
+import logo from '../assets/MAL.png'
 import { useAuth } from '../contexts/AuthContext'
 
 /**
@@ -23,8 +24,9 @@ const Navbar = () => {
     <div className="w-full border-b bg-white shadow-sm">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         {/* Logo/Brand */}
-        <Link to="/" className="font-semibold text-indigo-600 text-xl">
-          MAU Auctions
+        <Link to="/" className="font-semibold text-indigo-600 text-xl flex items-center">
+          <img src={logo} alt="MAU logo" className="h-16 w-auto mr-2" />
+          <span>MAU Auction Management System</span>
         </Link>
         
         {/* Navigation Menu */}
@@ -39,6 +41,29 @@ const Navbar = () => {
             }
           >
             Home
+          </NavLink>
+          
+          {/* About and FAQ - public pages */}
+          <NavLink 
+            to="/about" 
+            className={({ isActive }) => 
+              `hover:text-indigo-600 transition-colors ${
+                isActive ? 'text-indigo-600 font-medium' : 'text-gray-700'
+              }`
+            }
+          >
+            About
+          </NavLink>
+
+          <NavLink 
+            to="/faq" 
+            className={({ isActive }) => 
+              `hover:text-indigo-600 transition-colors ${
+                isActive ? 'text-indigo-600 font-medium' : 'text-gray-700'
+              }`
+            }
+          >
+            FAQ
           </NavLink>
           
           {/* Role-Based Navigation Links - Only show when user is logged in */}

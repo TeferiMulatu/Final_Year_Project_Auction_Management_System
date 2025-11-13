@@ -32,6 +32,14 @@ io.on('connection', (socket) => {
   socket.on('join_auction', (auctionId) => {
     socket.join(`auction_${auctionId}`);
   });
+  // Allow clients to join a user-specific room for personal notifications
+  socket.on('join_user', (userId) => {
+    socket.join(`user_${userId}`);
+  });
+    // Allow admin clients to join an 'admins' room to receive admin events
+    socket.on('join_admin', () => {
+      socket.join('admins');
+    });
 });
 
 server.listen(port, () => {

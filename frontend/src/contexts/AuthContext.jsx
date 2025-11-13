@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import api from '../services/api'
+import socket from '../services/socket'
+import { useToast } from './ToastContext'
 
 // Create authentication context for global state management
 const AuthContext = createContext()
@@ -24,18 +26,31 @@ export const AuthProvider = ({ children }) => {
   // State for current user data and loading status
   const [user, setUser] = useState(null) // Currently logged in user
   const [loading, setLoading] = useState(true) // Initial loading state
+  const { addToast } = useToast()
 
   // Check for existing authentication on component mount
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    const userData = localStorage.getItem('user')
-    const role = localStorage.getItem('role')
+    const token = sessionStorage.getItem('token')
+    const userData = sessionStorage.getItem('user')
+    const role = sessionStorage.getItem('role')
 
-    // If authentication data exists in localStorage, restore user session
+  // If authentication data exists in sessionStorage, restore user session
     if (token && userData && role) {
       try {
         const parsedUser = JSON.parse(userData)
         setUser({ ...parsedUser, role }) // Combine user data with role
+        // Connect socket and join user-specific room for notifications
+        try {
+          socket.connect()
+          socket.emit('join_user', parsedUser.id)
+          if (parsedUser.role === 'ADMIN') {
+            try { socket.emit('join_admin') } catch (e) { console.warn('join_admin failed', e) }
+          }
+          // Use toast for incoming notifications
+          socket.on('notification', (payload) => {
+            try { addToast({ message: payload.message, type: 'info' }) } catch (e) {}
+          })
+        } catch (e) { console.warn('Socket join_user failed', e) }
       } catch (error) {
         console.error('Error parsing user data:', error)
         logout() // Clear corrupted data
@@ -54,13 +69,24 @@ export const AuthProvider = ({ children }) => {
     try {
       const { data } = await api.post('/auth/login', { email, password })
       
-      // Store authentication data in localStorage for persistence
-      localStorage.setItem('token', data.token)
-      localStorage.setItem('user', JSON.stringify(data.user))
-      localStorage.setItem('role', data.user.role)
+  // Store authentication data in sessionStorage so session ends on browser/tab close
+  sessionStorage.setItem('token', data.token)
+  sessionStorage.setItem('user', JSON.stringify(data.user))
+  sessionStorage.setItem('role', data.user.role)
       
       // Update global user state
       setUser(data.user)
+      // Connect to socket and join personal room for notifications
+      try {
+        socket.connect()
+        socket.emit('join_user', data.user.id)
+        if (data.user.role === 'ADMIN') {
+          try { socket.emit('join_admin') } catch (e) { console.warn('join_admin failed', e) }
+        }
+        socket.on('notification', (payload) => {
+          try { addToast({ message: payload.message, type: 'info' }) } catch (e) {}
+        })
+      } catch (e) { console.warn('Socket join_user failed', e) }
       
       return { success: true, user: data.user }
     } catch (error) {
@@ -102,13 +128,18 @@ export const AuthProvider = ({ children }) => {
    * Logout function - clears user session and authentication data
    */
   const logout = () => {
-    // Remove all authentication data from localStorage
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
-    localStorage.removeItem('role')
+  // Remove all authentication data from sessionStorage
+  sessionStorage.removeItem('token')
+  sessionStorage.removeItem('user')
+  sessionStorage.removeItem('role')
     
     // Clear user state
     setUser(null)
+    try {
+      socket.off('notification')
+      socket.emit('leave_user', user?.id)
+      socket.disconnect()
+    } catch (e) {}
   }
 
   /**
@@ -116,7 +147,8 @@ export const AuthProvider = ({ children }) => {
    * @returns {boolean} - True if user is logged in and has valid token
    */
   const isAuthenticated = () => {
-    return !!user && !!localStorage.getItem('token')
+    // Check sessionStorage for token so session ends when browser/tab closes
+    return !!user && !!sessionStorage.getItem('token')
   }
 
   /**

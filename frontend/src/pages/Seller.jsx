@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import ProtectedRoute from '../components/ProtectedRoute'
 import api from '../services/api'
+import formatCurrency from '../utils/currency'
 
 const SellerContent = () => {
   // Authentication context to get current user info
@@ -18,9 +19,13 @@ const SellerContent = () => {
     description: '',
     category: '',
     image_url: '',
+    image_file: null,
     start_price: '',
-    ends_at: ''
+    ends_at: '',
+    min_increment: '1.00',
+    max_increment: ''
   })
+  const [formError, setFormError] = useState('')
 
   // Load auctions when component mounts
   useEffect(() => {
@@ -43,20 +48,71 @@ const SellerContent = () => {
   // Handle form submission for creating new auction
   const handleCreateAuction = async (e) => {
     e.preventDefault()
-    try {
-      const payload = {
-        ...newAuction,
-        start_price: newAuction.start_price ? Number(newAuction.start_price) : undefined,
+    setFormError('')
+    // Validate increments on client-side
+    const minIncVal = newAuction.min_increment !== '' ? Number(newAuction.min_increment) : undefined
+    const maxIncVal = newAuction.max_increment !== '' ? Number(newAuction.max_increment) : undefined
+    if (minIncVal !== undefined) {
+      if (Number.isNaN(minIncVal) || minIncVal <= 0) {
+        setFormError('Minimum increment must be a number greater than 0')
+        return
       }
-      await api.post('/auctions', payload)
+    }
+    if (maxIncVal !== undefined) {
+      if (Number.isNaN(maxIncVal) || maxIncVal < 0) {
+        setFormError('Maximum increment must be a non-negative number')
+        return
+      }
+    }
+    if (minIncVal !== undefined && maxIncVal !== undefined) {
+      if (maxIncVal < minIncVal) {
+        setFormError('Maximum increment must be greater than or equal to Minimum increment')
+        return
+      }
+    }
+    try {
+      // Normalize values we'll send
+      const normalizedMin = newAuction.min_increment ? newAuction.min_increment : '';
+      const normalizedMax = newAuction.max_increment ? newAuction.max_increment : '';
+
+      // If an image file is selected, use FormData to upload and include min/max increments
+      if (newAuction.image_file) {
+        const form = new FormData()
+        form.append('title', newAuction.title)
+        form.append('description', newAuction.description)
+        form.append('category', newAuction.category)
+        form.append('start_price', newAuction.start_price)
+        form.append('ends_at', newAuction.ends_at)
+        form.append('image', newAuction.image_file)
+        // Always include increment fields (empty string will be ignored server-side)
+        form.append('min_increment', normalizedMin)
+        form.append('max_increment', normalizedMax)
+        await api.post('/auctions', form)
+      } else {
+        const payload = {
+          title: newAuction.title,
+          description: newAuction.description,
+          category: newAuction.category,
+          image_url: newAuction.image_url,
+          start_price: newAuction.start_price ? Number(newAuction.start_price) : undefined,
+          ends_at: newAuction.ends_at,
+          // send numeric values where provided; undefined will let server use defaults
+          min_increment: newAuction.min_increment !== '' ? Number(newAuction.min_increment) : undefined,
+          max_increment: newAuction.max_increment !== '' ? Number(newAuction.max_increment) : undefined,
+        }
+        await api.post('/auctions', payload)
+      }
       // Reset form and refresh auctions list
       setNewAuction({
         title: '',
         description: '',
         category: '',
         image_url: '',
+        image_file: null,
         start_price: '',
-        ends_at: ''
+        ends_at: '',
+        min_increment: '1.00',
+        max_increment: ''
       })
       setShowCreateForm(false)
       loadAuctions()
@@ -64,7 +120,7 @@ const SellerContent = () => {
       const apiData = error.response?.data
       const message = apiData?.errors?.[0]?.msg || apiData?.message || 'Failed to create auction'
       console.error('Failed to create auction:', error)
-      alert(message)
+      setFormError(message)
     }
   }
 
@@ -120,6 +176,9 @@ const SellerContent = () => {
         <div className="bg-white p-6 rounded-lg shadow-md mb-6">
           <h2 className="text-lg font-medium mb-4">Create New Auction</h2>
           <form onSubmit={handleCreateAuction} className="space-y-4">
+            {formError && (
+              <div className="text-sm text-red-600">{formError}</div>
+            )}
             {/* Title and Category inputs */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -180,16 +239,22 @@ const SellerContent = () => {
                 </label>
                 <input
                   type="url"
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-2"
                   value={newAuction.image_url}
                   onChange={(e) => setNewAuction({ ...newAuction, image_url: e.target.value })}
                   placeholder="https://example.com/image.jpg"
                 />
+                <div className="text-sm text-gray-500 mb-1">Or upload an image from your device</div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setNewAuction({ ...newAuction, image_file: e.target.files?.[0] || null })}
+                  className="w-full"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Starting Price ($)
+                  Starting Price (Br)
                 </label>
                 <input
                   type="number"
@@ -212,6 +277,32 @@ const SellerContent = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   value={newAuction.ends_at}
                   onChange={(e) => setNewAuction({ ...newAuction, ends_at: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Min Increment (Br)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={newAuction.min_increment}
+                  onChange={(e) => setNewAuction({ ...newAuction, min_increment: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Max Increment (Br) (optional)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={newAuction.max_increment}
+                  onChange={(e) => setNewAuction({ ...newAuction, max_increment: e.target.value })}
                 />
               </div>
             </div>
@@ -292,12 +383,12 @@ const SellerContent = () => {
                     
                     {/* Auction metrics */}
                     <div className="space-y-2 border-t pt-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-gray-700">Current Price</span>
-                        <span className="text-lg font-bold text-indigo-600">
-                          ${Number(auction.current_price || auction.start_price).toFixed(2)}
-                        </span>
-                      </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm font-medium text-gray-700">Current Price</span>
+                                <span className="text-lg font-bold text-indigo-600">
+                                  {formatCurrency(auction.current_price || auction.start_price)}
+                                </span>
+                              </div>
                       
                       <div className="flex justify-between items-center">
                         <span className="text-sm font-medium text-gray-700">Time Left</span>

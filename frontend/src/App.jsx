@@ -9,6 +9,8 @@ import Admin from './pages/Admin.jsx'
 import Seller from './pages/Seller.jsx'
 import Bidder from './pages/Bidder.jsx'
 import NotFound from './pages/NotFound.jsx'
+import About from './pages/About.jsx'
+import FAQ from './pages/FAQ.jsx'
 
 const App = () => {
   return (
@@ -23,6 +25,8 @@ const App = () => {
           <Route path="/admin" element={<Admin />} />
           <Route path="/seller" element={<Seller />} />
           <Route path="/bidder" element={<Bidder />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/faq" element={<FAQ />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>

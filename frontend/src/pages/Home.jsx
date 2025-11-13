@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../services/api'
 import CountdownTimer from '../components/CountdownTimer'
+import formatCurrency from '../utils/currency'
 
 const Home = () => {
   // State for managing auctions data and UI states
@@ -150,8 +151,13 @@ const Home = () => {
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Current Price</span>
                     <span className="font-bold text-indigo-600">
-                      ${Number(auction.current_price).toFixed(2)}
+                      {formatCurrency(auction.current_price)}
                     </span>
+                  </div>
+                  {/* Min/Max increment display for visibility to all users */}
+                  <div className="flex justify-between items-center text-sm text-gray-500">
+                    <span>Min inc: {formatCurrency(auction.min_increment || 1)}</span>
+                    <span>{auction.max_increment ? `Max inc: ${formatCurrency(auction.max_increment)}` : 'No max'}</span>
                   </div>
                   
                   <div className="flex justify-between items-center">

@@ -4,18 +4,32 @@ import cors from 'cors';       // Middleware to enable Cross-Origin Resource Sha
 import morgan from 'morgan';   // HTTP request logger middleware
 import dotenv from 'dotenv';   // Loads environment variables from a .env file
 import { createProxyMiddleware } from 'http-proxy-middleware';
+import path from 'path';
+import fs from 'fs';
 
 // Import route handlers
 import authRoutes from './routes/auth.js';       // Routes for user authentication
 import auctionRoutes from './routes/auctions.js'; // Routes for auction-related operations
 import adminRoutes from './routes/admin.js';     // Routes for admin-specific actions
 import bidsRoutes from './routes/bids.js';       // Routes for bidding functionality
+import paymentsRoutes from './routes/payments.js'; // Payments (simulated)
+import notificationsRoutes from './routes/notifications.js';
 
 // Load environment variables into process.env
 dotenv.config();
 
 // Initialize the Express application
 const app = express();
+
+// Ensure uploads directory exists and serve it statically
+const uploadsDir = path.join(process.cwd(), 'uploads');
+try {
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
+} catch (e) {
+  // eslint-disable-next-line no-console
+  console.error('Failed to create uploads directory', e);
+}
+app.use('/uploads', express.static(uploadsDir));
 
 // Enable CORS with dynamic origin and credentials support
 app.use(cors({
@@ -46,6 +60,8 @@ app.use('/api/auth', authRoutes);         // Authentication routes
 app.use('/api/auctions', auctionRoutes);  // Auction routes
 app.use('/api/bids', bidsRoutes);         // Bidding routes
 app.use('/api/admin', adminRoutes);       // Admin routes
+app.use('/api/payments', paymentsRoutes); // Payment routes (simulated)
+app.use('/api/notifications', notificationsRoutes); // User notifications
 
 // Global error handler to catch and respond to errors
 app.use((err, _req, res, _next) => {

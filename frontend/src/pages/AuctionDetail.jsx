@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useToast } from '../contexts/ToastContext'
 import api from '../services/api'
 import socket from '../services/socket'
 import CountdownTimer from '../components/CountdownTimer'
+import formatCurrency from '../utils/currency'
 
 const AuctionDetail = () => {
   // Get auction ID from URL parameters
@@ -11,10 +13,12 @@ const AuctionDetail = () => {
   
   // Authentication context for user info and role checking
   const { user, hasRole } = useAuth()
+  const { addToast } = useToast()
   
   // State for managing auction data and UI states
   const [auction, setAuction] = useState(null) // Auction details
   const [bids, setBids] = useState([]) // Bidding history
+  const [topBidderId, setTopBidderId] = useState(null)
   const [amount, setAmount] = useState('') // Current bid input value
   const [loading, setLoading] = useState(false) // Loading state for API calls
   const [error, setError] = useState('') // Error messages
@@ -27,7 +31,9 @@ const AuctionDetail = () => {
       try {
         const { data } = await api.get(`/auctions/${id}`)
         setAuction(data.auction)
-        setBids(data.bids)
+  setBids(data.bids)
+  // Set current top bidder id from the latest bid (bids are ordered desc)
+  setTopBidderId(data.bids && data.bids.length ? data.bids[0].bidder_id : null)
         
         // Check if auction has ended based on end time
         const now = new Date()
@@ -51,16 +57,26 @@ const AuctionDetail = () => {
     // Handle real-time bid updates from server
     const handler = (payload) => {
       if (String(payload.auctionId) === String(id)) {
+        // If current user was the previous top bidder and someone else placed a bid,
+        // notify them that they've been outbid.
+        if (user && topBidderId && String(topBidderId) === String(user.id) && String(payload.bidderId) !== String(user.id)) {
+          try { addToast({ message: 'You have been outbid on this auction.', type: 'info' }) } catch (e) {}
+        }
+
         // Add new bid to the top of the list with temporary ID
         setBids(prev => [{ 
           id: Math.random(), // Temporary ID for local state
           amount: payload.amount, 
           created_at: new Date().toISOString(), 
-          bidder_name: 'Live Bid' // Indicator for real-time bids
+          bidder_name: payload.bidderName || 'Live Bid',
+          bidder_id: payload.bidderId
         }, ...prev])
-        
+
         // Update current price in auction data
         setAuction(prev => ({ ...prev, current_price: payload.amount }))
+
+        // Update top bidder id
+        setTopBidderId(payload.bidderId)
       }
     }
     
@@ -83,6 +99,23 @@ const AuctionDetail = () => {
     if (!amount || !user) return
     
     setError('')
+    // Client-side validation for min/max increment
+    const current = Number(auction.current_price)
+    const minInc = Number(auction.min_increment || 1)
+    const maxInc = auction.max_increment ? Number(auction.max_increment) : null
+    const minAllowed = current + minInc
+    if (Number(amount) < minAllowed) {
+      setError(`Bid must be at least ${formatCurrency(minInc)} higher than current price (min allowed: ${formatCurrency(minAllowed)})`)
+      return
+    }
+    if (maxInc !== null) {
+      const maxAllowed = current + maxInc
+      if (Number(amount) > maxAllowed) {
+        setError(`Bid cannot exceed max increment of ${formatCurrency(maxInc)} (max allowed: ${formatCurrency(maxAllowed)})`)
+        return
+      }
+    }
+
     try {
       await api.post('/bids', { 
         auction_id: Number(id), 
@@ -150,7 +183,7 @@ const AuctionDetail = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Starting Price:</span>
-                <span className="font-medium">${Number(auction.start_price).toFixed(2)}</span>
+                <span className="font-medium">{formatCurrency(auction.start_price)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Seller:</span>
@@ -173,7 +206,7 @@ const AuctionDetail = () => {
             <div className="text-center mb-6">
               {/* Current Price Display */}
               <div className="text-3xl font-bold text-indigo-600 mb-2">
-                ${Number(auction.current_price).toFixed(2)}
+                {formatCurrency(auction.current_price)}
               </div>
               <div className="text-sm text-gray-600 mb-4">Current Highest Bid</div>
               
@@ -181,6 +214,14 @@ const AuctionDetail = () => {
               <div className="flex items-center justify-center space-x-2 mb-4">
                 <span className="text-sm text-gray-600">Time Remaining:</span>
                 <CountdownTimer endTime={auction.ends_at} onEnd={handleEnd} />
+              </div>
+
+              {/* Increment rules display */}
+              <div className="text-center mb-4">
+                <div className="text-sm text-gray-600">Minimum increment: <span className="font-medium">{formatCurrency(auction.min_increment || 1)}</span></div>
+                {auction.max_increment && (
+                  <div className="text-sm text-gray-600">Maximum increment: <span className="font-medium">{formatCurrency(auction.max_increment)}</span></div>
+                )}
               </div>
 
               {/* Ended Auction Indicator */}
@@ -199,12 +240,12 @@ const AuctionDetail = () => {
                     Your Bid Amount
                   </label>
                   <div className="flex space-x-2">
-                    <input
+                      <input
                       type="number"
                       step="0.01"
                       min={Number(auction.current_price) + 0.01}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      placeholder={`Min: $${(Number(auction.current_price) + 0.01).toFixed(2)}`}
+                      placeholder={`Min: ${formatCurrency(Number(auction.current_price) + 0.01)}`}
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
                     />
@@ -274,7 +315,7 @@ const AuctionDetail = () => {
                   <div>
                     {/* Bid Amount */}
                     <div className="font-medium text-gray-900">
-                      ${Number(bid.amount).toFixed(2)}
+                      {formatCurrency(bid.amount)}
                     </div>
                     {/* Bidder Name */}
                     <div className="text-sm text-gray-500">

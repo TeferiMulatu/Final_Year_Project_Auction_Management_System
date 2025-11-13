@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
+import { useToast } from '../contexts/ToastContext'
+import { useAuth } from '../contexts/AuthContext'
+import socket from '../services/socket'
 import api from '../services/api'
+import formatCurrency from '../utils/currency'
 import ProtectedRoute from '../components/ProtectedRoute'
 
 const AdminContent = () => {
@@ -8,6 +12,10 @@ const AdminContent = () => {
   const [pendingAuctions, setPendingAuctions] = useState([]) // Auctions awaiting approval
   const [stats, setStats] = useState({ users: 0, auctions: 0, bids: 0 }) // System statistics
   const [activeTab, setActiveTab] = useState('dashboard') // Current active tab
+  const { user: currentUser } = useAuth()
+  const [selectedUser, setSelectedUser] = useState(null)
+  const [modalOpen, setModalOpen] = useState(false)
+  const { addToast } = useToast()
 
   /**
    * Load all admin data from API endpoints
@@ -27,6 +35,26 @@ const AdminContent = () => {
   // Load data when component mounts
   useEffect(() => { load() }, [])
 
+  // Listen for new user registrations via socket and refresh list
+  useEffect(() => {
+    const handler = (payload) => {
+      // Only refresh if admin page is active
+      if (activeTab === 'users') load()
+      else {
+        // still update users array so badge count is accurate
+        load()
+      }
+    }
+    try {
+      socket.on('user_registered', handler)
+    } catch (e) { /* ignore socket errors */ }
+    return () => {
+      try { socket.off('user_registered', handler) } catch (e) {}
+    }
+  }, [activeTab])
+
+  const pendingUsersCount = users.filter(u => !u.is_active).length
+
   /**
    * Toggle user active/inactive status
    * @param {number} id - User ID to toggle
@@ -34,6 +62,22 @@ const AdminContent = () => {
   const toggle = async (id) => {
     await api.post(`/admin/users/${id}/toggle`)
     await load() // Reload data to reflect changes
+  }
+
+  /**
+   * Reset a user's password (admin action). Prompts for new password.
+   * @param {number} id
+   */
+  const resetPassword = async (id) => {
+    const newPass = window.prompt('Enter new password for user (min 6 chars)')
+    if (!newPass) return
+    try {
+      await api.post(`/admin/users/${id}/reset-password`, { password: newPass })
+      addToast({ message: 'Password reset successfully', type: 'success' })
+      await load()
+    } catch (err) {
+      addToast({ message: err.response?.data?.message || 'Failed to reset password', type: 'error' })
+    }
   }
 
   /**
@@ -94,7 +138,14 @@ const AdminContent = () => {
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            User Management
+            <span className="inline-flex items-center">
+              <span>User Management</span>
+              {pendingUsersCount > 0 && (
+                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-600 text-white">
+                  {pendingUsersCount}
+                </span>
+              )}
+            </span>
           </button>
         </nav>
       </div>
@@ -189,7 +240,7 @@ const AdminContent = () => {
                       
                       {/* Starting Price Column */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ${Number(auction.start_price).toFixed(2)}
+                        {formatCurrency(auction.start_price)}
                       </td>
                       
                       {/* End Date Column */}
@@ -248,6 +299,12 @@ const AdminContent = () => {
                     Role
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    FIN
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    ID Images
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -278,6 +335,25 @@ const AdminContent = () => {
                         {user.role}
                       </span>
                     </td>
+                    {/* FIN Column */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {user.fin_number || '-'}
+                    </td>
+                    {/* ID Images Column */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <div className="flex items-center space-x-2">
+                        {user.id_front_url ? (
+                          <button onClick={() => { setSelectedUser(user); setModalOpen(true) }} className="focus:outline-none">
+                            <img src={user.id_front_url} alt="id-front" className="h-12 w-16 object-cover rounded-md" />
+                          </button>
+                        ) : <span className="text-xs text-gray-400">No</span>}
+                        {user.id_back_url ? (
+                          <button onClick={() => { setSelectedUser(user); setModalOpen(true) }} className="focus:outline-none">
+                            <img src={user.id_back_url} alt="id-back" className="h-12 w-16 object-cover rounded-md" />
+                          </button>
+                        ) : <span className="text-xs text-gray-400">No</span>}
+                      </div>
+                    </td>
                     
                     {/* Status Column with Color-coded Badge */}
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -288,23 +364,61 @@ const AdminContent = () => {
                       </span>
                     </td>
                     
-                    {/* Action Column - Toggle User Status */}
+                      {/* Action Column - Toggle User Status + Reset Password */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button
-                        onClick={() => toggle(user.id)}
-                        className={`px-3 py-1 rounded-md text-sm ${
-                          user.is_active 
-                            ? 'bg-red-100 text-red-700 hover:bg-red-200' // Deactivate button
-                            : 'bg-green-100 text-green-700 hover:bg-green-200' // Activate button
-                        }`}
-                      >
-                        {user.is_active ? 'Deactivate' : 'Activate'}
-                      </button>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => toggle(user.id)}
+                          className={`px-3 py-1 rounded-md text-sm ${
+                            user.is_active 
+                              ? 'bg-red-100 text-red-700 hover:bg-red-200' // Deactivate button
+                              : 'bg-green-100 text-green-700 hover:bg-green-200' // Activate button
+                          }`}
+                        >
+                          {user.is_active ? 'Deactivate' : 'Activate'}
+                        </button>
+
+                        <button
+                          onClick={() => resetPassword(user.id)}
+                          className="px-3 py-1 rounded-md text-sm bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
+                        >
+                          Reset Password
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+      {/* User Details Modal */}
+      {modalOpen && selectedUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black opacity-50" onClick={() => setModalOpen(false)} />
+          <div className="bg-white rounded-lg shadow-xl z-10 max-w-3xl w-full mx-4 overflow-hidden">
+            <div className="p-4 border-b flex items-center justify-between">
+              <h3 className="text-lg font-medium">{selectedUser.name} — ID images</h3>
+              <button onClick={() => setModalOpen(false)} className="text-gray-600 hover:text-gray-900">Close</button>
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div className="text-sm text-gray-600 mb-2">Front</div>
+                {selectedUser.id_front_url ? (
+                  <img src={selectedUser.id_front_url} alt="front-large" className="w-full rounded-md object-contain" />
+                ) : <div className="text-xs text-gray-400">No front image</div>}
+              </div>
+              <div>
+                <div className="text-sm text-gray-600 mb-2">Back</div>
+                {selectedUser.id_back_url ? (
+                  <img src={selectedUser.id_back_url} alt="back-large" className="w-full rounded-md object-contain" />
+                ) : <div className="text-xs text-gray-400">No back image</div>}
+              </div>
+            </div>
+            <div className="p-4 border-t text-right">
+              <button onClick={() => setModalOpen(false)} className="px-4 py-2 bg-indigo-600 text-white rounded-md">Close</button>
+            </div>
           </div>
         </div>
       )}
