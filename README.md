@@ -1,7 +1,7 @@
 # MAU Auction Platform
 
 A full-stack auction platform built with React, Express.js, and MySQL.
-
+![image alt](https://github.com/TeferiMulatu/Final_Year_Project_Auction_Management_System/blob/922563b74081195088c65034393e7380c4284461/img1.png)
 ## Project Structure
 
 ```
