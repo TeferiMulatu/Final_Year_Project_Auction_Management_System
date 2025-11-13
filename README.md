@@ -2,6 +2,8 @@
 
 A full-stack auction platform built with React, Express.js, and MySQL.
 
+![image alt](https://github.com/TeferiMulatu/Final_Year_Project_Auction_Management_System/blob/a816fb13851da07a15222bcedd3f64b76f750ba2/img2.png)
+![image alt](https://github.com/TeferiMulatu/Final_Year_Project_Auction_Management_System/blob/922563b74081195088c65034393e7380c4284461/img1.png)
 ## Project Structure
 
 ```
