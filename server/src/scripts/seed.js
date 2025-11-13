@@ -81,13 +81,13 @@ async function run() {
     const now = new Date();
     const ends = new Date(now.getTime() + 1000 * 60 * 60 * 24);
     await conn.query(
-      'INSERT IGNORE INTO auctions (id, seller_id, title, description, category, image_url, start_price, current_price, min_increment, max_increment, ends_at, status) VALUES (1, 2, "Dell Latitude 7420", "Business laptop in great condition", "Electronics", "https://picsum.photos/seed/laptop/600/400", 300.00, 300.00, 5.00, 100.00, ?, "APPROVED"), (2, 2, "Office Chair", "Ergonomic chair with lumbar support", "Furniture", "https://picsum.photos/seed/chair/600/400", 50.00, 50.00, 2.00, 50.00, ?, "APPROVED")',
+      'INSERT IGNORE INTO auctions (id, seller_id, title, description, category, image_url, start_price, current_price, min_increment, max_increment, ends_at, status) VALUES (1, 2, "Dell Latitude 7420", "Business laptop in great condition", "Electronics", "https://images.pexels.com/photos/1092652/pexels-photo-1092652.jpeg", 300.00, 300.00, 500.00, 1000.00, ?, "APPROVED"), (2, 2, "Office Chair", "Ergonomic chair with lumbar support", "Furniture", "https://images.pexels.com/photos/1957477/pexels-photo-1957477.jpeg", 5000.00, 5000.00, 500.00, 1000.00, ?, "APPROVED")',
       [ends, ends]
     );
 
     // Seed bids
     await conn.query(
-      'INSERT IGNORE INTO bids (id, auction_id, bidder_id, amount) VALUES (1, 1, 3, 320.00), (2, 1, 3, 350.00)'
+      'INSERT IGNORE INTO bids (id, auction_id, bidder_id, amount) VALUES (1, 1, 3, 320.00), (2, 1, 3, 35000.00)'
     );
 
     // Ensure auctions.current_price matches highest bid if any
