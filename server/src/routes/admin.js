@@ -11,6 +11,25 @@ router.use(authenticate, authorize(['ADMIN']));
 router.post('/auctions/:id/approve', async (req, res) => {
   try {
     await pool.query('UPDATE auctions SET status = "APPROVED" WHERE id = ?', [req.params.id]);
+    // Fetch approved auction and broadcast to public viewers
+    try {
+      const [[auction]] = await pool.query(
+        `SELECT a.id, a.title, a.description, a.category, a.image_url, a.start_price, a.current_price, a.min_increment, a.max_increment, a.deposit_amount, a.reserve_price, a.buy_now_price, a.winner_id, a.final_price, a.ends_at, a.status, u.name AS seller_name
+           FROM auctions a
+           JOIN users u ON u.id = a.seller_id
+          WHERE a.id = ?`,
+        [req.params.id]
+      );
+      const io = req.app.get('io');
+      if (io && auction) {
+        io.emit('auction_created', auction);
+        // Decrement admin badge because one pending auction became approved
+        try { io.emit('admin_badge_decrement', { type: 'auction' }) } catch (e) { console.warn('Failed to emit admin_badge_decrement', e) }
+      }
+    } catch (err) {
+      console.error('Failed to fetch/emit approved auction', err);
+    }
+
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ message: 'Failed to approve' });
@@ -79,6 +98,11 @@ export default router;
 router.post('/users/:id/approve', async (req, res) => {
   try {
     await pool.query('UPDATE users SET is_active = 1 WHERE id = ?', [req.params.id]);
+    // Notify clients that a pending user was approved so badge can decrement
+    try {
+      const io = req.app.get('io');
+      if (io) io.emit('admin_badge_decrement', { type: 'user' });
+    } catch (e) { console.warn('Failed to emit admin_badge_decrement for user', e) }
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ message: 'Failed to approve user' });

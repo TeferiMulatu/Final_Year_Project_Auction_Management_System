@@ -20,6 +20,7 @@ const AuctionDetail = () => {
   const [bids, setBids] = useState([]) // Bidding history
   const [topBidderId, setTopBidderId] = useState(null)
   const [amount, setAmount] = useState('') // Current bid input value
+  const [depositPaid, setDepositPaid] = useState('') // Deposit input value
   const [loading, setLoading] = useState(false) // Loading state for API calls
   const [error, setError] = useState('') // Error messages
   const [isEnded, setIsEnded] = useState(false) // Auction end status
@@ -82,8 +83,25 @@ const AuctionDetail = () => {
     
     // Subscribe to bid updates and cleanup on unmount
     socket.on('bid_update', handler)
+    // Auction closed handler
+    const closedHandler = (payload) => {
+      if (String(payload.auctionId) === String(id)) {
+        // mark ended and set auction to closed so UI and timer update immediately
+        setIsEnded(true)
+        setAuction(prev => ({
+          ...prev,
+          winner_id: payload.winnerId || prev.winner_id,
+          final_price: payload.finalPrice || prev.final_price,
+          status: 'CLOSED',
+          ends_at: new Date().toISOString()
+        }))
+        try { addToast({ message: 'Auction closed', type: 'info' }) } catch (e) {}
+      }
+    }
+    socket.on('auction_closed', closedHandler)
     return () => {
       socket.off('bid_update', handler)
+      socket.off('auction_closed', closedHandler)
       socket.disconnect()
     }
   }, [id])
@@ -104,24 +122,44 @@ const AuctionDetail = () => {
     const minInc = Number(auction.min_increment || 1)
     const maxInc = auction.max_increment ? Number(auction.max_increment) : null
     const minAllowed = current + minInc
-    if (Number(amount) < minAllowed) {
+    const buyNow = auction.buy_now_price ? Number(auction.buy_now_price) : null
+    // If this bid equals buy-now price, allow it regardless of increment rules
+    const isBuyNowBid = buyNow !== null && Number(amount) === buyNow
+    if (!isBuyNowBid && Number(amount) < minAllowed) {
       setError(`Bid must be at least ${formatCurrency(minInc)} higher than current price (min allowed: ${formatCurrency(minAllowed)})`)
       return
     }
     if (maxInc !== null) {
       const maxAllowed = current + maxInc
-      if (Number(amount) > maxAllowed) {
+      if (!isBuyNowBid && Number(amount) > maxAllowed) {
         setError(`Bid cannot exceed max increment of ${formatCurrency(maxInc)} (max allowed: ${formatCurrency(maxAllowed)})`)
         return
       }
     }
 
     try {
-      await api.post('/bids', { 
+      // Ensure deposit requirement is satisfied
+      const requiredDeposit = Number(auction.deposit_amount || 0)
+      if (requiredDeposit > 0) {
+        if (!depositPaid || Number(depositPaid) < requiredDeposit) {
+          setError(`This auction requires a refundable deposit of at least ${formatCurrency(requiredDeposit)} to bid.`)
+          return
+        }
+      }
+
+      const resp = await api.post('/bids', { 
         auction_id: Number(id), 
-        amount: Number(amount) 
+        amount: Number(amount),
+        deposit_paid: Number(depositPaid) || 0
       })
       setAmount('') // Clear input after successful bid
+      setDepositPaid('')
+      // If server closed the auction due to buy-now, update UI
+      if (resp?.data?.buyNow) {
+        setIsEnded(true)
+        setAuction(prev => ({ ...prev, winner_id: user?.id, final_price: Number(amount) }))
+        try { addToast({ message: 'You purchased this item with Buy-It-Now', type: 'success' }) } catch (e) {}
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to place bid')
     }
@@ -189,6 +227,18 @@ const AuctionDetail = () => {
                 <span className="text-gray-600">Seller:</span>
                 <span className="font-medium">{auction.seller_name}</span>
               </div>
+              {auction.reserve_price && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Reserve Price:</span>
+                  <span className="font-medium">{formatCurrency(auction.reserve_price)}</span>
+                </div>
+              )}
+              {auction.buy_now_price && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Buy-It-Now Price:</span>
+                  <span className="font-medium">{formatCurrency(auction.buy_now_price)}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -255,8 +305,49 @@ const AuctionDetail = () => {
                     >
                       Place Bid
                     </button>
+                    {auction.buy_now_price && Number(auction.buy_now_price) > 0 && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          // handle buy now: ensure deposit and call bids endpoint with buy-now price
+                          setError('')
+                          const requiredDeposit = Number(auction.deposit_amount || 0)
+                          if (requiredDeposit > 0 && (!depositPaid || Number(depositPaid) < requiredDeposit)) {
+                            setError(`This auction requires a refundable deposit of at least ${formatCurrency(requiredDeposit)} to buy now.`)
+                            return
+                          }
+                          try {
+                            await api.post('/bids', { auction_id: Number(id), amount: Number(auction.buy_now_price), deposit_paid: Number(depositPaid) || 0 })
+                            setAmount('')
+                            setDepositPaid('')
+                          } catch (err) {
+                            setError(err.response?.data?.message || 'Failed to buy now')
+                          }
+                        }}
+                        className="bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700 transition-colors"
+                      >
+                        Buy Now
+                      </button>
+                    )}
                   </div>
                 </div>
+                {auction.deposit_amount && Number(auction.deposit_amount) > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Refundable Deposit Required</label>
+                    <div className="flex space-x-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={Number(auction.deposit_amount)}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder={`Required: ${formatCurrency(Number(auction.deposit_amount))}`}
+                        value={depositPaid}
+                        onChange={(e) => setDepositPaid(e.target.value)}
+                      />
+                      <div className="text-sm text-gray-600 pt-2">Refundable if you do not win or after settlement.</div>
+                    </div>
+                  </div>
+                )}
                 
                 {/* Bid Error Display */}
                 {error && (

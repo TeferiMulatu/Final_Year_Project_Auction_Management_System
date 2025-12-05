@@ -14,6 +14,7 @@ import adminRoutes from './routes/admin.js';     // Routes for admin-specific ac
 import bidsRoutes from './routes/bids.js';       // Routes for bidding functionality
 import paymentsRoutes from './routes/payments.js'; // Payments (simulated)
 import notificationsRoutes from './routes/notifications.js';
+import publicRoutes from './routes/public.js';
 
 // Load environment variables into process.env
 dotenv.config();
@@ -62,6 +63,7 @@ app.use('/api/bids', bidsRoutes);         // Bidding routes
 app.use('/api/admin', adminRoutes);       // Admin routes
 app.use('/api/payments', paymentsRoutes); // Payment routes (simulated)
 app.use('/api/notifications', notificationsRoutes); // User notifications
+app.use('/api/public', publicRoutes); // Public helpers (admin badge counts)
 
 // Global error handler to catch and respond to errors
 app.use((err, _req, res, _next) => {

@@ -5,6 +5,7 @@ import ProtectedRoute from '../components/ProtectedRoute'
 import { Link } from 'react-router-dom'
 import api from '../services/api'
 import formatCurrency from '../utils/currency'
+import socket from '../services/socket'
 
 const BidderContent = () => {
   // Authentication context to get current user info
@@ -18,6 +19,21 @@ const BidderContent = () => {
   // Load bids when component mounts
   useEffect(() => {
     loadBids()
+    // connect socket to receive auction_closed events and refresh bids
+    socket.connect()
+    const closedHandler = (payload) => {
+      // If any auction closed, refresh user's bids to reflect winner/refunds
+      try { loadBids() } catch (e) { console.warn('Failed to reload bids after auction_closed', e) }
+      // If current user won, show a toast
+      if (payload?.winnerId && Number(payload.winnerId) === Number(user?.id)) {
+        try { addToast({ message: `You won auction ${payload.auctionId}`, type: 'success' }) } catch (e) {}
+      }
+    }
+    socket.on('auction_closed', closedHandler)
+    return () => {
+      socket.off('auction_closed', closedHandler)
+      socket.disconnect()
+    }
   }, [])
 
   // Function to fetch user's bids from API
@@ -129,6 +145,12 @@ const BidderContent = () => {
                     Current Price
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Deposit Paid
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Refund Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -171,6 +193,14 @@ const BidderContent = () => {
                       {/* Current Auction Price */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {formatCurrency(bid.auction.current_price)}
+                      </td>
+                      {/* Deposit Paid */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {bid.deposit_paid ? formatCurrency(bid.deposit_paid) : '-'}
+                      </td>
+                      {/* Refund Status */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {bid.deposit_refunded ? `Refunded (${formatCurrency(bid.refund_amount)})` : (bid.deposit_paid ? 'Held' : '-')}
                       </td>
                       
                       {/* Bid Status Badge */}

@@ -76,6 +76,8 @@ router.post(
             id_front_url: idFrontUrl,
             id_back_url: idBackUrl
           })
+          // Also notify all clients to increment admin badge (so guests see the red badge)
+          try { io.emit('admin_badge_increment', { type: 'user' }) } catch (e) { console.warn('Failed to emit admin_badge_increment', e) }
         }
       } catch (e) { console.warn('Failed to emit user_registered', e) }
       return res.status(201).json({ id: result.insertId, name, email, role, pending: true });

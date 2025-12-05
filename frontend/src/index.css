@@ -1,1 +1,29 @@
 @import "tailwindcss";
+
+:root{
+	--bg-gradient-start: #f7fbff;
+	--bg-gradient-mid: #ffffff;
+	--accent: #4f46e5; /* indigo-600 */
+	--muted: #6b7280; /* gray-500 */
+}
+
+
+html,body,#root { height: 100%; }
+body {
+	background: linear-gradient(180deg,var(--bg-gradient-start), var(--bg-gradient-mid));
+	-webkit-font-smoothing:antialiased;
+	-moz-osx-font-smoothing:grayscale;
+	color: #111827; /* gray-900 */
+}
+
+.card {
+	background: white; border-radius: .5rem; box-shadow: 0 6px 20px rgba(16,24,40,0.06); border: 1px solid #f3f4f6;
+}
+
+.btn { padding: .5rem 1rem; border-radius: .375rem; font-weight: 500; transition: all .15s ease-in-out; display:inline-flex; align-items:center; justify-content:center }
+.btn-primary { background: var(--accent); color: white; box-shadow: 0 6px 18px rgba(79,70,229,0.12) }
+.btn-ghost { background: white; color: #374151; border: 1px solid #e5e7eb }
+.muted { color: var(--muted) }
+.glass { background: rgba(255,255,255,0.6); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.soft-shadow { box-shadow: 0 6px 20px rgba(16,24,40,0.06) }
+.brand-logo { height: 48px; width: auto; border-radius: 8px; box-shadow: 0 6px 18px rgba(79,70,229,0.12); }

@@ -24,6 +24,8 @@ const SellerContent = () => {
     ends_at: '',
     min_increment: '1.00',
     max_increment: ''
+    ,reserve_price: '',
+    buy_now_price: ''
   })
   const [formError, setFormError] = useState('')
 
@@ -87,6 +89,8 @@ const SellerContent = () => {
         // Always include increment fields (empty string will be ignored server-side)
         form.append('min_increment', normalizedMin)
         form.append('max_increment', normalizedMax)
+        form.append('reserve_price', newAuction.reserve_price)
+        form.append('buy_now_price', newAuction.buy_now_price)
         await api.post('/auctions', form)
       } else {
         const payload = {
@@ -99,6 +103,8 @@ const SellerContent = () => {
           // send numeric values where provided; undefined will let server use defaults
           min_increment: newAuction.min_increment !== '' ? Number(newAuction.min_increment) : undefined,
           max_increment: newAuction.max_increment !== '' ? Number(newAuction.max_increment) : undefined,
+          reserve_price: newAuction.reserve_price !== '' ? Number(newAuction.reserve_price) : undefined,
+          buy_now_price: newAuction.buy_now_price !== '' ? Number(newAuction.buy_now_price) : undefined,
         }
         await api.post('/auctions', payload)
       }
@@ -112,7 +118,9 @@ const SellerContent = () => {
         start_price: '',
         ends_at: '',
         min_increment: '1.00',
-        max_increment: ''
+        max_increment: '',
+        reserve_price: '',
+        buy_now_price: ''
       })
       setShowCreateForm(false)
       loadAuctions()
@@ -305,6 +313,35 @@ const SellerContent = () => {
                   onChange={(e) => setNewAuction({ ...newAuction, max_increment: e.target.value })}
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Reserve Price (Br) - minimum acceptable price
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={newAuction.reserve_price}
+                  onChange={(e) => setNewAuction({ ...newAuction, reserve_price: e.target.value })}
+                />
+                <div className="text-sm text-gray-500">If bids don't reach this amount, the item won't be sold.</div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Buy-It-Now Price (Br) - optional
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={newAuction.buy_now_price}
+                  onChange={(e) => setNewAuction({ ...newAuction, buy_now_price: e.target.value })}
+                />
+                <div className="text-sm text-gray-500">If a bidder pays this price, the auction ends immediately and item is sold.</div>
+              </div>
+              {/* Deposit is auto-calculated as 25% of starting price; no input required */}
             </div>
             
             {/* Form action buttons */}

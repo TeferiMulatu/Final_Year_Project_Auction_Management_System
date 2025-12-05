@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../services/api'
+import socket from '../services/socket'
 import CountdownTimer from '../components/CountdownTimer'
 import formatCurrency from '../utils/currency'
 
@@ -29,6 +30,36 @@ const Home = () => {
       }
     }
     load()
+    // Ensure socket is connected for unauthenticated visitors and listen for new auctions
+    try {
+      socket.connect()
+    } catch (e) {
+      // ignore connect errors; other components may connect as well
+    }
+
+    const newAuctionHandler = (auction) => {
+      // Only show auctions that are approved for public listing
+      if (!auction || auction.status !== 'APPROVED') return
+      // Prepend newly created auction so users see it immediately
+      setItems(prev => {
+        // Avoid duplicates if auction already present
+        if (prev.some(a => Number(a.id) === Number(auction.id))) return prev
+        const updated = [auction, ...prev]
+        return updated
+      })
+      // update categories
+      setCategories(prev => {
+        if (!auction || !auction.category) return prev
+        if (prev.includes(auction.category)) return prev
+        return [auction.category, ...prev]
+      })
+    }
+
+    socket.on('auction_created', newAuctionHandler)
+
+    return () => {
+      socket.off('auction_created', newAuctionHandler)
+    }
   }, [])
 
   // Filter auctions based on search term and selected category

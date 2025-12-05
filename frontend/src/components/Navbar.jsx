@@ -1,6 +1,9 @@
 import { Link, NavLink } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import logo from '../assets/MAL.png'
 import { useAuth } from '../contexts/AuthContext'
+import api from '../services/api'
+import socket from '../services/socket'
 
 /**
  * Navigation Bar Component
@@ -11,6 +14,40 @@ import { useAuth } from '../contexts/AuthContext'
 const Navbar = () => {
   // Get authentication state and methods from AuthContext
   const { user, logout, hasRole } = useAuth()
+  const [adminBadge, setAdminBadge] = useState(0)
+
+  useEffect(() => {
+    // Fetch initial badge counts (public endpoint)
+    let mounted = true
+    const load = async () => {
+      try {
+        const { data } = await api.get('/public/admin-badge')
+        if (!mounted) return
+        const total = Number(data.pendingAuctions || 0) + Number(data.pendingUsers || 0)
+        setAdminBadge(total)
+      } catch (e) {
+        // ignore; public endpoint may be blocked in some envs
+      }
+    }
+    load()
+
+    const incHandler = (payload) => {
+      setAdminBadge(prev => Number(prev || 0) + 1)
+    }
+    const decHandler = (payload) => {
+      setAdminBadge(prev => Math.max(0, Number(prev || 0) - 1))
+    }
+
+    try {
+      socket.on('admin_badge_increment', incHandler)
+      socket.on('admin_badge_decrement', decHandler)
+    } catch (e) {}
+
+    return () => {
+      mounted = false
+      try { socket.off('admin_badge_increment', incHandler); socket.off('admin_badge_decrement', decHandler) } catch (e) {}
+    }
+  }, [])
 
   /**
    * Handle user logout
@@ -21,12 +58,12 @@ const Navbar = () => {
   }
 
   return (
-    <div className="w-full border-b bg-white shadow-sm">
-      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div className="w-full bg-gradient-to-r from-indigo-50 to-white soft-shadow">
+      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between glass">
         {/* Logo/Brand */}
-        <Link to="/" className="font-semibold text-indigo-600 text-xl flex items-center">
-          <img src={logo} alt="MAU logo" className="h-16 w-auto mr-2" />
-          <span>MAU Auction Management System</span>
+        <Link to="/" className="font-semibold text-indigo-700 text-2xl flex items-center">
+          <img src={logo} alt="MAU logo" className="brand-logo mr-3" />
+          <span>MAU Auction</span>
         </Link>
         
         {/* Navigation Menu */}
@@ -44,14 +81,7 @@ const Navbar = () => {
           </NavLink>
           
           {/* About and FAQ - public pages */}
-          <NavLink 
-            to="/about" 
-            className={({ isActive }) => 
-              `hover:text-indigo-600 transition-colors ${
-                isActive ? 'text-indigo-600 font-medium' : 'text-gray-700'
-              }`
-            }
-          >
+          <NavLink to="/about" className={({ isActive }) => `hover:text-indigo-600 transition-colors ${isActive ? 'text-indigo-600 font-medium' : 'text-gray-700'}`}>
             About
           </NavLink>
 
@@ -98,18 +128,23 @@ const Navbar = () => {
               )}
               
               {/* Admin Dashboard Link - Only for ADMIN role */}
-              {hasRole('ADMIN') && (
-                <NavLink 
-                  to="/admin" 
-                  className={({ isActive }) => 
-                    `hover:text-indigo-600 transition-colors ${
-                      isActive ? 'text-indigo-600 font-medium' : 'text-gray-700'
-                    }`
-                  }
-                >
+              <NavLink 
+                to="/admin" 
+                className={({ isActive }) => 
+                  `hover:text-indigo-600 transition-colors ${
+                    isActive ? 'text-indigo-600 font-medium' : 'text-gray-700'
+                  }`
+                }
+              >
+                <span className="inline-flex items-center">
                   Admin
-                </NavLink>
-              )}
+                  {adminBadge > 0 && (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-600 text-white">
+                      {adminBadge}
+                    </span>
+                  )}
+                </span>
+              </NavLink>
             </>
           )}
           
@@ -147,10 +182,7 @@ const Navbar = () => {
                 </Link>
                 
                 {/* Register Button with Prominent Styling */}
-                <Link 
-                  to="/register" 
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm hover:bg-indigo-700 transition-colors"
-                >
+                <Link to="/register" className="btn-primary">
                   Register
                 </Link>
               </div>

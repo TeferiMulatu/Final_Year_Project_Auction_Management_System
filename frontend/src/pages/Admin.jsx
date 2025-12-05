@@ -53,6 +53,26 @@ const AdminContent = () => {
     }
   }, [activeTab])
 
+  // Listen for newly created pending auctions so admins see them in real-time
+  useEffect(() => {
+    const pendingHandler = (auction) => {
+      // Update pending auctions list and stats
+      setPendingAuctions(prev => {
+        if (!auction) return prev
+        if (prev.some(a => Number(a.id) === Number(auction.id))) return prev
+        return [auction, ...prev]
+      })
+      // Refresh stats to reflect new pending count
+      setStats(s => ({ ...s, auctions: Number(s.auctions || 0) + 1 }))
+      // If admin is viewing auctions tab, also reload (to ensure consistent server-side state)
+      if (activeTab === 'auctions') load()
+    }
+    try {
+      socket.on('auction_pending', pendingHandler)
+    } catch (e) {}
+    return () => { try { socket.off('auction_pending', pendingHandler) } catch (e) {} }
+  }, [activeTab])
+
   const pendingUsersCount = users.filter(u => !u.is_active).length
 
   /**

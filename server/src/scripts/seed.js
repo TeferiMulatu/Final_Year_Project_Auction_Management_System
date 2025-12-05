@@ -45,6 +45,9 @@ async function run() {
         current_price DECIMAL(10,2) NOT NULL,
         min_increment DECIMAL(10,2) NOT NULL DEFAULT 1.00,
         max_increment DECIMAL(10,2) DEFAULT NULL,
+        deposit_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        reserve_price DECIMAL(10,2) DEFAULT NULL,
+        buy_now_price DECIMAL(10,2) DEFAULT NULL,
         winner_id INT DEFAULT NULL,
         final_price DECIMAL(10,2) DEFAULT NULL,
         ends_at DATETIME NOT NULL,
@@ -61,6 +64,9 @@ async function run() {
         auction_id INT NOT NULL,
         bidder_id INT NOT NULL,
         amount DECIMAL(10,2) NOT NULL,
+        deposit_paid DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        deposit_refunded TINYINT(1) NOT NULL DEFAULT 0,
+        refund_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (auction_id) REFERENCES auctions(id),
         FOREIGN KEY (bidder_id) REFERENCES users(id)
@@ -81,13 +87,16 @@ async function run() {
     const now = new Date();
     const ends = new Date(now.getTime() + 1000 * 60 * 60 * 24);
     await conn.query(
-      'INSERT IGNORE INTO auctions (id, seller_id, title, description, category, image_url, start_price, current_price, min_increment, max_increment, ends_at, status) VALUES (1, 2, "Dell Latitude 7420", "Business laptop in great condition", "Electronics", "https://images.pexels.com/photos/1092652/pexels-photo-1092652.jpeg", 300.00, 300.00, 500.00, 1000.00, ?, "APPROVED"), (2, 2, "Office Chair", "Ergonomic chair with lumbar support", "Furniture", "https://images.pexels.com/photos/1957477/pexels-photo-1957477.jpeg", 5000.00, 5000.00, 500.00, 1000.00, ?, "APPROVED")',
+      'INSERT IGNORE INTO auctions (id, seller_id, title, description, category, image_url, start_price, current_price, min_increment, max_increment, deposit_amount, reserve_price, buy_now_price, ends_at, status) VALUES (1, 2, "Dell Latitude 7420", "Business laptop in great condition", "Electronics", "https://images.pexels.com/photos/1092652/pexels-photo-1092652.jpeg", 35000.00, 35000.00, 500.00, 1000.00, 8750.00, 35000.00, 38000.00, ?, "APPROVED"), (2, 2, "Office Chair", "Ergonomic chair with lumbar support", "Furniture", "https://images.pexels.com/photos/1957477/pexels-photo-1957477.jpeg", 5000.00, 5000.00, 500.00, 1000.00, 1250.00, 5000.00, 6000.00, ?, "APPROVED")',
       [ends, ends]
     );
 
     // Seed bids
+    // For seeded bids, set deposit_paid equal to 25% of the auction start_price
+    // Auction 1 start_price 35000 => deposit 8750.00
+    // Auction 2 start_price 5000 => deposit 1250.00
     await conn.query(
-      'INSERT IGNORE INTO bids (id, auction_id, bidder_id, amount) VALUES (1, 1, 3, 320.00), (2, 1, 3, 35000.00)'
+      'INSERT IGNORE INTO bids (id, auction_id, bidder_id, amount, deposit_paid) VALUES (1, 1, 3, 35500.00, 8750.00), (2, 1, 3, 35000.00, 8750.00)'
     );
 
     // Ensure auctions.current_price matches highest bid if any
