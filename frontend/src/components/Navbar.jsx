@@ -58,41 +58,27 @@ const Navbar = () => {
   }
 
   return (
-    <div className="w-full bg-gradient-to-r from-indigo-50 to-white soft-shadow">
-      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between glass">
+    <div className="w-full navbar-wrapper">
+      <div className="max-w-6xl mx-auto card glass navbar-inner px-4 py-3">
         {/* Logo/Brand */}
         <Link to="/" className="font-semibold text-indigo-700 text-2xl flex items-center">
           <img src={logo} alt="MAU logo" className="brand-logo mr-3" />
-          <span>MAU Auction</span>
+          <span className="text-xl text-gray-900">MAU Auction</span>
         </Link>
         
         {/* Navigation Menu */}
         <nav className="flex items-center gap-6">
           {/* Home Link - Always visible */}
-          <NavLink 
-            to="/" 
-            className={({ isActive }) => 
-              `hover:text-indigo-600 transition-colors ${
-                isActive ? 'text-indigo-600 font-medium' : 'text-gray-700'
-              }`
-            }
-          >
+          <NavLink to="/" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             Home
           </NavLink>
           
           {/* About and FAQ - public pages */}
-          <NavLink to="/about" className={({ isActive }) => `hover:text-indigo-600 transition-colors ${isActive ? 'text-indigo-600 font-medium' : 'text-gray-700'}`}>
+          <NavLink to="/about" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             About
           </NavLink>
 
-          <NavLink 
-            to="/faq" 
-            className={({ isActive }) => 
-              `hover:text-indigo-600 transition-colors ${
-                isActive ? 'text-indigo-600 font-medium' : 'text-gray-700'
-              }`
-            }
-          >
+          <NavLink to="/faq" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             FAQ
           </NavLink>
           
@@ -101,41 +87,20 @@ const Navbar = () => {
             <>
               {/* Seller Dashboard Link - Only for SELLER role */}
               {hasRole('SELLER') && (
-                <NavLink 
-                  to="/seller" 
-                  className={({ isActive }) => 
-                    `hover:text-indigo-600 transition-colors ${
-                      isActive ? 'text-indigo-600 font-medium' : 'text-gray-700'
-                    }`
-                  }
-                >
+                <NavLink to="/seller" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                   Seller Dashboard
                 </NavLink>
               )}
               
               {/* My Bids Link - Only for BIDDER role */}
               {hasRole('BIDDER') && (
-                <NavLink 
-                  to="/bidder" 
-                  className={({ isActive }) => 
-                    `hover:text-indigo-600 transition-colors ${
-                      isActive ? 'text-indigo-600 font-medium' : 'text-gray-700'
-                    }`
-                  }
-                >
+                <NavLink to="/bidder" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                   My Bids
                 </NavLink>
               )}
               
               {/* Admin Dashboard Link - Only for ADMIN role */}
-              <NavLink 
-                to="/admin" 
-                className={({ isActive }) => 
-                  `hover:text-indigo-600 transition-colors ${
-                    isActive ? 'text-indigo-600 font-medium' : 'text-gray-700'
-                  }`
-                }
-              >
+              <NavLink to="/admin" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                 <span className="inline-flex items-center">
                   Admin
                   {adminBadge > 0 && (
@@ -152,7 +117,7 @@ const Navbar = () => {
           <div className="flex items-center gap-4">
             {user ? (
               /* Logged In User Menu */
-              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3">
                 {/* User Welcome Message with Role Badge */}
                 <span className="text-sm text-gray-600">
                   Welcome, <span className="font-medium">{user.name}</span>
@@ -182,7 +147,7 @@ const Navbar = () => {
                 </Link>
                 
                 {/* Register Button with Prominent Styling */}
-                <Link to="/register" className="btn-primary">
+                <Link to="/register" className="btn btn-primary">
                   Register
                 </Link>
               </div>
