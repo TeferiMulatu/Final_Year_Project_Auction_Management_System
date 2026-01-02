@@ -1,9 +1,12 @@
 import React from 'react'
+import { Link } from 'react-router-dom'
 
 const FAQ = () => {
   return (
     <div className="max-w-4xl mx-auto p-6">
       <h1 className="text-3xl font-bold mb-4">Frequently Asked Questions</h1>
+
+      <p className="text-gray-700 mb-4">Quick links: <Link to="/about" className="text-blue-600 hover:underline">About</Link> · <Link to="/" className="text-blue-600 hover:underline">Home</Link></p>
 
       <section className="mb-6">
         <h2 className="text-xl font-semibold">How do I register?</h2>
@@ -47,7 +50,7 @@ const FAQ = () => {
 
       <section className="mb-6">
         <h2 className="text-xl font-semibold">How do I contact support?</h2>
-        <p className="text-gray-700">Use the contact information on the About page or open an issue in the repository for fastest response.</p>
+        <p className="text-gray-700">Use the contact information on the <Link to="/about" className="text-blue-600 hover:underline">About</Link> page or open an issue in the repository for fastest response. Demo admin: <strong>admin@mau.edu.et</strong></p>
       </section>
     </div>
   )

@@ -92,6 +92,86 @@ router.get('/pending-auctions', async (_req, res) => {
   }
 });
 
+// Get pending wallet top-up requests
+router.get('/wallet-topups', async (_req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT wt.id, wt.user_id, wt.amount, wt.status, wt.note, wt.created_at, u.name, u.email
+       FROM wallet_topups wt
+       JOIN users u ON u.id = wt.user_id
+       ORDER BY wt.created_at DESC`
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error('Failed to fetch wallet topups', e && e.stack ? e.stack : e);
+    res.status(500).json({ message: 'Failed to fetch wallet topups' });
+  }
+});
+
+// Approve a wallet top-up request
+router.post('/wallet-topups/:id/approve', async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[topup]] = await conn.query('SELECT * FROM wallet_topups WHERE id = ? FOR UPDATE', [req.params.id]);
+    if (!topup) {
+      await conn.rollback();
+      return res.status(404).json({ message: 'Top-up request not found' });
+    }
+    if (topup.status !== 'PENDING') {
+      await conn.rollback();
+      return res.status(400).json({ message: 'Top-up already processed' });
+    }
+
+    // Credit user balance
+    await conn.query('UPDATE users SET balance = balance + ? WHERE id = ?', [topup.amount, topup.user_id]);
+    await conn.query('INSERT INTO transactions (user_id, type, amount, note) VALUES (?, ?, ?, ?)', [topup.user_id, 'TOPUP', topup.amount, `Top-up approved (request ${topup.id})`]);
+
+    // Mark topup approved
+    await conn.query('UPDATE wallet_topups SET status = ?, admin_id = ?, processed_at = NOW() WHERE id = ?', ['APPROVED', req.user.id, req.params.id]);
+
+    // Insert notification and emit to user
+    const msg = `Your top-up request of ${Number(topup.amount).toFixed(2)} ETB has been approved.`;
+    await conn.query('INSERT INTO notifications (user_id, message) VALUES (?, ?)', [topup.user_id, msg]);
+    try { const io = req.app.get('io'); if (io) io.to(`user_${topup.user_id}`).emit('notification', { message: msg }); } catch (e) {}
+
+    await conn.commit();
+
+    // Decrement admin badge
+    try { const io = req.app.get('io'); if (io) io.emit('admin_badge_decrement', { type: 'topup' }); } catch (e) {}
+
+    res.json({ ok: true });
+  } catch (e) {
+    await conn.rollback();
+    console.error('Failed to approve wallet topup', e && e.stack ? e.stack : e);
+    res.status(500).json({ message: 'Failed to approve top-up' });
+  } finally {
+    conn.release();
+  }
+});
+
+// Reject a wallet top-up request
+router.post('/wallet-topups/:id/reject', async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM wallet_topups WHERE id = ?', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ message: 'Top-up request not found' });
+    const topup = rows[0];
+    if (topup.status !== 'PENDING') return res.status(400).json({ message: 'Top-up already processed' });
+
+    await pool.query('UPDATE wallet_topups SET status = ?, admin_id = ?, processed_at = NOW() WHERE id = ?', ['REJECTED', req.user.id, req.params.id]);
+    const msg = `Your top-up request of ${Number(topup.amount).toFixed(2)} ETB has been rejected by admin.`;
+    await pool.query('INSERT INTO notifications (user_id, message) VALUES (?, ?)', [topup.user_id, msg]);
+    try { const io = req.app.get('io'); if (io) io.to(`user_${topup.user_id}`).emit('notification', { message: msg }); } catch (e) {}
+
+    try { const io = req.app.get('io'); if (io) io.emit('admin_badge_decrement', { type: 'topup' }); } catch (e) {}
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Failed to reject wallet topup', e && e.stack ? e.stack : e);
+    res.status(500).json({ message: 'Failed to reject top-up' });
+  }
+});
+
 export default router;
 
 // Admin: approve a user (activate account)

@@ -1,4 +1,5 @@
 import React from 'react'
+import { Link } from 'react-router-dom'
 
 const About = () => {
   return (
@@ -48,10 +49,19 @@ const About = () => {
         respective folders. See the README for full setup instructions.
       </p>
 
-      <h2 className="text-2xl font-semibold mt-6 mb-2">Contributing & contact</h2>
+      <h2 className="text-2xl font-semibold mt-6 mb-2">Quick links</h2>
+      <ul className="list-disc list-inside text-gray-700 space-y-2 mb-6">
+        <li>
+          <Link to="/faq" className="text-blue-600 hover:underline">FAQ</Link> — common questions about bidding and accounts.
+        </li>
+        <li>
+          <Link to="/" className="text-blue-600 hover:underline">Home</Link> — browse auctions and bid.
+        </li>
+      </ul>
+
+      <h2 className="text-2xl font-semibold mt-6 mb-2">Contact</h2>
       <p className="text-gray-700">
-        Contributions, issues and questions are welcome. Open an issue in the repository
-        or contact the maintainers listed in the project README.
+        For questions or support, open an issue in the repository or contact the demo admin: <strong>admin@mau.edu.et</strong>.
       </p>
     </div>
   )

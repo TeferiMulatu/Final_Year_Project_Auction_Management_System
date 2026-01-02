@@ -138,6 +138,27 @@ const AuctionDetail = () => {
     }
 
     try {
+      // Refresh latest auction data to avoid stale current_price (prevents 400 from server)
+      try {
+        const { data: latestData } = await api.get(`/auctions/${id}`)
+        if (latestData && latestData.auction) {
+          setAuction(latestData.auction)
+        }
+      } catch (refreshErr) {
+        console.warn('Failed to refresh auction before placing bid', refreshErr)
+      }
+
+      // Recompute minAllowed against latest auction state
+      const latestCurrent = Number((auction && auction.current_price) || 0)
+      const latestMinInc = Number((auction && auction.min_increment) || 1)
+      const latestMinAllowed = latestCurrent + latestMinInc
+      const latestBuyNow = auction && auction.buy_now_price ? Number(auction.buy_now_price) : null
+      const latestIsBuyNow = latestBuyNow !== null && Number(amount) === latestBuyNow
+      if (!latestIsBuyNow && Number(amount) < latestMinAllowed) {
+        setError(`Bid must be at least ${formatCurrency(latestMinInc)} higher than current price (min allowed: ${formatCurrency(latestMinAllowed)})`)
+        return
+      }
+
       // Ensure deposit requirement is satisfied
       const requiredDeposit = Number(auction.deposit_amount || 0)
       if (requiredDeposit > 0) {
@@ -197,6 +218,10 @@ const AuctionDetail = () => {
   }
 
   if (!auction) return null
+
+  // Use server-provided refundable deposit amount to match backend validation
+  const depositRequired = Number(auction.deposit_amount || 0)
+  // Buy-It-Now price remains static (use `auction.buy_now_price`)
 
   return (
     <div className="max-w-6xl mx-auto p-4">
@@ -293,9 +318,9 @@ const AuctionDetail = () => {
                       <input
                       type="number"
                       step="0.01"
-                      min={Number(auction.current_price) + 0.01}
+                      min={Number(auction.current_price) + Number(auction.min_increment || 1)}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      placeholder={`Min: ${formatCurrency(Number(auction.current_price) + 0.01)}`}
+                      placeholder={`Min: ${Math.round(Number(auction.current_price) + Number(auction.min_increment || 1))}`}
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
                     />
@@ -317,7 +342,8 @@ const AuctionDetail = () => {
                             return
                           }
                           try {
-                            await api.post('/bids', { auction_id: Number(id), amount: Number(auction.buy_now_price), deposit_paid: Number(depositPaid) || 0 })
+                            const amountToPay = Number(auction.buy_now_price)
+                            await api.post('/bids', { auction_id: Number(id), amount: amountToPay, deposit_paid: Number(depositPaid) || 0 })
                             setAmount('')
                             setDepositPaid('')
                           } catch (err) {
@@ -331,16 +357,16 @@ const AuctionDetail = () => {
                     )}
                   </div>
                 </div>
-                {auction.deposit_amount && Number(auction.deposit_amount) > 0 && (
+                {depositRequired > 0 && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Refundable Deposit Required</label>
                     <div className="flex space-x-2">
                       <input
                         type="number"
                         step="0.01"
-                        min={Number(auction.deposit_amount)}
+                        min={depositRequired}
                         className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder={`Required: ${formatCurrency(Number(auction.deposit_amount))}`}
+                        placeholder={`Required: ${depositRequired} ETB`}
                         value={depositPaid}
                         onChange={(e) => setDepositPaid(e.target.value)}
                       />

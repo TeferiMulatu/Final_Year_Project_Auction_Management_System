@@ -4,6 +4,7 @@ import pool from '../config/db.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import multer from 'multer';
 import path from 'path';
+import { sendMail } from '../utils/mailer.js';
 
 // Configure multer to store uploads in server/uploads
 const storage = multer.diskStorage({
@@ -17,7 +18,8 @@ const upload = multer({ storage });
 
 const router = Router();
 
-// Public: list approved auctions with optional search
+// Public: list public auctions (approved or closed) with optional search
+// Keep closed auctions visible on the home listing so won/buy-now items don't disappear
 router.get('/', async (req, res) => {
   const { q } = req.query;
   try {
@@ -27,7 +29,7 @@ router.get('/', async (req, res) => {
               a.current_price, a.min_increment, a.max_increment, a.deposit_amount, a.reserve_price, a.buy_now_price, a.winner_id, a.final_price, a.ends_at, a.status, u.name AS seller_name
          FROM auctions a
          JOIN users u ON u.id = a.seller_id
-        WHERE a.status = 'APPROVED' AND (a.title LIKE ? OR a.category LIKE ?)
+        WHERE a.status IN ('APPROVED','CLOSED') AND (a.title LIKE ? OR a.category LIKE ?)
         ORDER BY a.ends_at ASC`,
       [like, like]
     );
@@ -127,7 +129,7 @@ router.post('/:id/close', authenticate, async (req, res) => {
 
       if (winnerId && Number(bidderId) === Number(winnerId)) {
         // Winner: deposit is held toward settlement; notify winner
-        const msg = `Your deposit of ${total.toFixed(2)} Br for auction ${auction.title} is being held pending payment.`;
+        const msg = `Your deposit of ${total.toFixed(2)} ETB for auction ${auction.title} is being held pending payment.`;
         await conn.query('INSERT INTO notifications (user_id, message) VALUES (?, ?)', [bidderId, msg]);
         if (io) io.to(`user_${bidderId}`).emit('notification', { message: msg, auctionId: Number(auctionId) });
         continue;
@@ -142,15 +144,95 @@ router.post('/:id/close', authenticate, async (req, res) => {
       // Notify bidder about refund (sum refunded amount)
       const [sumRes] = await conn.query('SELECT SUM(refund_amount) AS refunded FROM bids WHERE auction_id = ? AND bidder_id = ?', [auctionId, bidderId]);
       const refundedAmt = (sumRes[0] && sumRes[0].refunded) ? Number(sumRes[0].refunded) : total;
-      const message = `Your deposit of ${refundedAmt.toFixed(2)} Br for auction ${auction.title} has been refunded.`;
+      const message = `Your deposit of ${refundedAmt.toFixed(2)} ETB for auction ${auction.title} has been refunded.`;
+      // Credit the bidder's balance and log transaction
+      try {
+        await conn.query('UPDATE users SET balance = balance + ? WHERE id = ?', [refundedAmt, bidderId]);
+        await conn.query('INSERT INTO transactions (user_id, type, amount, auction_id, note) VALUES (?, ?, ?, ?, ?)', [bidderId, 'DEPOSIT_REFUND', refundedAmt, auctionId, 'Refund of deposit after auction']);
+      } catch (creditErr) {
+        console.error('Failed to credit refund to user balance:', creditErr && creditErr.stack ? creditErr.stack : creditErr);
+      }
       await conn.query('INSERT INTO notifications (user_id, message) VALUES (?, ?)', [bidderId, message]);
       if (io) io.to(`user_${bidderId}`).emit('notification', { message, auctionId: Number(auctionId) });
     }
 
+    // Settlement: attempt to deduct winner balance and credit seller + admin commission
+    if (winnerId && finalPrice !== null) {
+      try {
+        const commissionRate = Number(process.env.COMMISSION_RATE || 0.05);
+        const commission = Math.round(Number(finalPrice || 0) * commissionRate * 100) / 100;
+        const sellerShare = Math.round((Number(finalPrice || 0) - commission) * 100) / 100;
+
+        // Lock winner and seller rows for update
+        const [winnerRows] = await conn.query('SELECT balance, email FROM users WHERE id = ? FOR UPDATE', [winnerId]);
+        const [sellerRows] = await conn.query('SELECT balance, email FROM users WHERE id = ? FOR UPDATE', [auction.seller_id]);
+        const winnerBal = winnerRows && winnerRows[0] ? Number(winnerRows[0].balance || 0) : 0;
+        if (winnerBal >= Number(finalPrice)) {
+          // Deduct winner
+          await conn.query('UPDATE users SET balance = balance - ? WHERE id = ?', [finalPrice, winnerId]);
+          await conn.query('INSERT INTO transactions (user_id, type, amount, auction_id, related_user_id, note) VALUES (?, ?, ?, ?, ?, ?)', [winnerId, 'AUCTION_PAYMENT', Number(finalPrice), auctionId, auction.seller_id, 'Payment for won auction']);
+          // Credit seller
+          await conn.query('UPDATE users SET balance = balance + ? WHERE id = ?', [sellerShare, auction.seller_id]);
+          await conn.query('INSERT INTO transactions (user_id, type, amount, auction_id, related_user_id, note) VALUES (?, ?, ?, ?, ?, ?)', [auction.seller_id, 'SALE_PROCEEDS', sellerShare, auctionId, winnerId, 'Proceeds from auction (after commission)']);
+          // Credit admin (assume admin user id 1)
+          if (commission > 0) {
+            await conn.query('UPDATE users SET balance = balance + ? WHERE id = ?', [commission, 1]);
+            await conn.query('INSERT INTO transactions (user_id, type, amount, auction_id, related_user_id, note) VALUES (?, ?, ?, ?, ?, ?)', [1, 'COMMISSION', commission, auctionId, winnerId, 'Platform commission']);
+          }
+          // Mark auction as paid (flag)
+          await conn.query('UPDATE auctions SET is_paid = 1 WHERE id = ?', [auctionId]);
+          // Notify winner and seller about settlement
+          const winnerMsg = `Payment of ${Number(finalPrice).toFixed(2)} ETB has been taken from your balance and the seller has been credited. Thank you.`;
+          await conn.query('INSERT INTO notifications (user_id, message) VALUES (?, ?)', [winnerId, winnerMsg]);
+          if (io) io.to(`user_${winnerId}`).emit('notification', { message: winnerMsg, auctionId: Number(auctionId) });
+          const sellerMsg = `Your auction "${auction.title}" has been paid. You received ${sellerShare.toFixed(2)} ETB (after commission).`;
+          await conn.query('INSERT INTO notifications (user_id, message) VALUES (?, ?)', [auction.seller_id, sellerMsg]);
+          if (io) io.to(`user_${auction.seller_id}`).emit('notification', { message: sellerMsg, auctionId: Number(auctionId) });
+        } else {
+          // Insufficient funds - notify winner
+          const msg = `You won the auction "${auction.title}" but do not have sufficient balance (${winnerBal.toFixed(2)} ETB) to complete payment of ${Number(finalPrice).toFixed(2)} ETB. Please complete payment.`;
+          await conn.query('INSERT INTO notifications (user_id, message) VALUES (?, ?)', [winnerId, msg]);
+          if (io) io.to(`user_${winnerId}`).emit('notification', { message: msg, auctionId: Number(auctionId) });
+          await conn.query('INSERT INTO transactions (user_id, type, amount, auction_id, related_user_id, note) VALUES (?, ?, ?, ?, ?, ?)', [winnerId, 'INSUFFICIENT_FUNDS', Number(finalPrice), auctionId, auction.seller_id, 'Winner does not have sufficient balance for automatic settlement']);
+        }
+      } catch (settleErr) {
+        console.error('Settlement failed:', settleErr && settleErr.stack ? settleErr.stack : settleErr);
+      }
+    }
     // Emit auction_closed to room
     if (io) io.to(`auction_${auctionId}`).emit('auction_closed', { auctionId: Number(auctionId), winnerId, finalPrice });
 
     await conn.commit();
+    // Send congratulation email to winner (if any)
+    if (winnerId) {
+      try {
+        const [userRows] = await pool.query('SELECT email, name FROM users WHERE id = ?', [winnerId]);
+        const winner = userRows && userRows[0];
+        // Attempt to fetch seller contact info to include in the email
+        let seller = null;
+        try {
+          const [sellerRows] = await pool.query('SELECT email, name FROM users WHERE id = ?', [auction.seller_id]);
+          seller = sellerRows && sellerRows[0];
+        } catch (sErr) {
+          console.warn('Failed to fetch seller contact info:', sErr && sErr.message ? sErr.message : sErr);
+        }
+
+        if (winner && winner.email) {
+          const baseUrl = process.env.API_BASE || process.env.CLIENT_ORIGIN || '';
+          const subject = `You won: ${auction.title} (Auction #${auctionId})`;
+          const text = `Hi ${winner.name || 'Buyer'},\n\nCongratulations — you are the winning bidder for the auction "${auction.title}" (Auction ID: ${auctionId}). The winning bid is ${finalPrice !== null ? Number(finalPrice).toFixed(2) : ''} ETB.\n\nNext steps:\n1) Please complete payment within 48 hours using the payment instructions on the auction page.\n2) Contact the seller to arrange delivery or collection.` +
+            `${seller && (seller.name || seller.email) ? `\n\nSeller: ${seller.name || 'Seller'}${seller.email ? ` (${seller.email})` : ''}` : ''}` +
+            `\n\nView the auction and payment instructions: ${baseUrl ? `${baseUrl}/auctions/${auctionId}` : 'your account > My Auctions > Purchases' }\n\nIf you need help, reply to this email or contact support at mauauction3@gmail.com.\n\nThanks,\nMAU Auction Team`;
+          try {
+            await sendMail({ to: winner.email, subject, text });
+          } catch (mailErr) {
+            console.error('Failed to send winner email:', mailErr && mailErr.stack ? mailErr.stack : mailErr);
+          }
+        }
+      } catch (eMailFetchErr) {
+        console.error('Failed to fetch winner email/user:', eMailFetchErr && eMailFetchErr.stack ? eMailFetchErr.stack : eMailFetchErr);
+      }
+    }
     res.json({ auctionId: Number(auctionId), winnerId, finalPrice });
   } catch (e) {
     await conn.rollback();

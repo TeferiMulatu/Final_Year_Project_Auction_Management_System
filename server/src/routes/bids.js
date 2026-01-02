@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { body, validationResult } from 'express-validator';
 import pool from '../config/db.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { sendMail } from '../utils/mailer.js';
 
 const router = Router();
 
@@ -9,7 +10,12 @@ router.post(
   '/',
   authenticate,
   authorize(['BIDDER']),
-  [body('auction_id').isInt({ gt: 0 }), body('amount').isFloat({ gt: 0 }), body('deposit_paid').isFloat({ gt: 0 })],
+  [
+    body('auction_id').isInt({ gt: 0 }),
+    body('amount').isFloat({ gt: 0 }),
+    // allow deposit_paid to be zero or omitted (some auctions may not require a deposit)
+    body('deposit_paid').optional().isFloat({ min: 0 })
+  ],
   async (req, res) => {
     // Debug: log incoming request info
     try {
@@ -41,6 +47,7 @@ router.post(
       const minInc = Number(auction.min_increment || 1);
       const maxInc = auction.max_increment ? Number(auction.max_increment) : null;
       const buyNow = auction.buy_now_price ? Number(auction.buy_now_price) : null;
+      // Treat buy-now only when the submitted amount exactly equals the buy-now price
       const isBuyNowBid = buyNow !== null && Number(amount) === buyNow;
       const minAllowed = Number(auction.current_price) + minInc;
       if (!isBuyNowBid && Number(amount) < minAllowed) {
@@ -69,13 +76,29 @@ router.post(
         'INSERT INTO bids (auction_id, bidder_id, amount, deposit_paid) VALUES (?, ?, ?, ?)',
         [auction_id, req.user.id, amount, Number(deposit_paid) || 0]
       );
+      // If a deposit was paid, hold it from the bidder's balance and record a transaction
+      const paid = Number(deposit_paid) || 0;
+      if (paid > 0) {
+        // Check balance
+        const [userRows] = await conn.query('SELECT balance FROM users WHERE id = ? FOR UPDATE', [req.user.id]);
+        const bal = userRows && userRows[0] ? Number(userRows[0].balance || 0) : 0;
+        if (bal < paid) {
+          await conn.rollback();
+          return res.status(400).json({ message: 'Insufficient balance to pay deposit' });
+        }
+        await conn.query('UPDATE users SET balance = balance - ? WHERE id = ?', [paid, req.user.id]);
+        await conn.query('INSERT INTO transactions (user_id, type, amount, auction_id, note) VALUES (?, ?, ?, ?, ?)', [req.user.id, 'DEPOSIT_HOLD', paid, auction_id, 'Deposit held for bid']);
+      }
       await conn.query('UPDATE auctions SET current_price = ? WHERE id = ?', [amount, auction_id]);
 
       // If buy-now price is set and bid meets or exceeds it, close auction immediately
-      if (buyNow !== null && Number(amount) >= buyNow) {
+      if (buyNow !== null && Number(amount) === buyNow) {
         const finalPrice = buyNow;
-        // Mark auction closed and winner
-        await conn.query('UPDATE auctions SET status = ?, winner_id = ?, final_price = ? WHERE id = ?', ['CLOSED', req.user.id, finalPrice, auction_id]);
+        // Mark auction closed, set winner, final price and ends_at to now
+        // Use a MySQL-compatible datetime string (YYYY-MM-DD HH:mm:ss)
+        const now = new Date();
+        const mysqlDatetime = now.toISOString().slice(0, 19).replace('T', ' ');
+        await conn.query('UPDATE auctions SET status = ?, winner_id = ?, final_price = ?, ends_at = ? WHERE id = ?', ['CLOSED', req.user.id, finalPrice, mysqlDatetime, auction_id]);
 
         // Refund non-winning bidders and notify
         const [bidderSums] = await conn.query(
@@ -89,7 +112,7 @@ router.post(
           if (total <= 0) continue;
           if (Number(bidderId) === Number(req.user.id)) {
             // Winner: hold deposit
-            const msg = `Your deposit of ${total.toFixed(2)} Br for auction ${auction.title} is being held pending payment.`;
+            const msg = `Your deposit of ${total.toFixed(2)} ETB for auction ${auction.title} is being held pending payment.`;
             await conn.query('INSERT INTO notifications (user_id, message) VALUES (?, ?)', [bidderId, msg]);
             if (io) io.to(`user_${bidderId}`).emit('notification', { message: msg, auctionId: Number(auction_id) });
             continue;
@@ -100,17 +123,56 @@ router.post(
           );
           const [sumRes] = await conn.query('SELECT SUM(refund_amount) AS refunded FROM bids WHERE auction_id = ? AND bidder_id = ?', [auction_id, bidderId]);
           const refundedAmt = (sumRes[0] && sumRes[0].refunded) ? Number(sumRes[0].refunded) : total;
-          const message = `Your deposit of ${refundedAmt.toFixed(2)} Br for auction ${auction.title} has been refunded.`;
+          const message = `Your deposit of ${refundedAmt.toFixed(2)} ETB for auction ${auction.title} has been refunded.`;
+          try {
+            await conn.query('UPDATE users SET balance = balance + ? WHERE id = ?', [refundedAmt, bidderId]);
+            await conn.query('INSERT INTO transactions (user_id, type, amount, auction_id, note) VALUES (?, ?, ?, ?, ?)', [bidderId, 'DEPOSIT_REFUND', refundedAmt, auction_id, 'Refund of deposit after buy-now']);
+          } catch (creditErr) {
+            console.error('Failed to credit refund to user balance:', creditErr && creditErr.stack ? creditErr.stack : creditErr);
+          }
           await conn.query('INSERT INTO notifications (user_id, message) VALUES (?, ?)', [bidderId, message]);
           if (io) io.to(`user_${bidderId}`).emit('notification', { message, auctionId: Number(auction_id) });
         }
 
         await conn.commit();
         // Respond and emit auction_closed
+        // Send congratulations email to buy-now winner
+        try {
+          const [userRows] = await pool.query('SELECT email, name FROM users WHERE id = ?', [req.user.id]);
+          const winner = userRows && userRows[0];
+          // Try to get seller contact info
+          let seller = null;
+          try {
+            const [sellerRows] = await pool.query('SELECT email, name FROM users WHERE id = ?', [auction.seller_id]);
+            seller = sellerRows && sellerRows[0];
+          } catch (sErr) {
+            console.warn('Failed to fetch seller contact info for buy-now email:', sErr && sErr.message ? sErr.message : sErr);
+          }
+
+          if (winner && winner.email) {
+            const baseUrl = process.env.API_BASE || process.env.CLIENT_ORIGIN || '';
+            const subject = `Purchase confirmed: ${auction.title}`;
+            const text = `Hi ${winner.name || 'Buyer'},\n\nGreat news — you purchased "${auction.title}" using Buy Now for ${finalPrice !== null ? Number(finalPrice).toFixed(2) : ''} ETB.\n\nNext steps:\n1) Please complete payment and arrange delivery/collection with the seller.\n2) You will receive a receipt once payment is confirmed.` +
+              `${seller && (seller.name || seller.email) ? `\n\nSeller: ${seller.name || 'Seller'}${seller.email ? ` (${seller.email})` : ''}` : ''}` +
+              `\n\nView your purchase: ${baseUrl ? `${baseUrl}/auctions/${auction_id}` : 'your account > Purchases'}\n\nIf you need assistance, contact support at mauauction3@gmail.com.\n\nThanks,\nMAU Auction Team`;
+            try {
+              await sendMail({ to: winner.email, subject, text });
+            } catch (mailErr) {
+              console.error('Failed to send buy-now winner email:', mailErr && mailErr.stack ? mailErr.stack : mailErr);
+            }
+          }
+        } catch (fetchErr) {
+          console.error('Failed to fetch buy-now winner user/email:', fetchErr && fetchErr.stack ? fetchErr.stack : fetchErr);
+        }
         res.status(201).json({ id: result.insertId, buyNow: true });
         try {
           const io2 = req.app.get('io');
-          if (io2) io2.to(`auction_${auction_id}`).emit('auction_closed', { auctionId: auction_id, winnerId: req.user.id, finalPrice });
+          if (io2) {
+            // Emit to auction room
+            io2.to(`auction_${auction_id}`).emit('auction_closed', { auctionId: auction_id, winnerId: req.user.id, finalPrice });
+            // Also emit globally so public listings (not joined to rooms) can update
+            io2.emit('auction_closed', { auctionId: auction_id, winnerId: req.user.id, finalPrice });
+          }
         } catch (emitErr) { console.error('Socket emit failed for auction_closed:', emitErr && emitErr.stack ? emitErr.stack : emitErr); }
         return;
       }
@@ -144,10 +206,11 @@ router.post(
 router.get('/my-bids', authenticate, authorize(['BIDDER']), async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT b.id, b.amount, b.created_at, b.deposit_paid, b.deposit_refunded, b.refund_amount,
-              a.id as auction_id, a.title, a.category, a.image_url, a.current_price, a.ends_at, a.winner_id, a.final_price, a.status
+            `SELECT b.id, b.amount, b.created_at, b.deposit_paid, b.deposit_refunded, b.refund_amount,
+              a.id as auction_id, a.title, a.category, a.image_url, a.current_price, a.ends_at, a.winner_id, a.final_price, a.status, a.is_paid, u.name AS seller_name
        FROM bids b
        JOIN auctions a ON a.id = b.auction_id
+       JOIN users u ON u.id = a.seller_id
        WHERE b.bidder_id = ?
        ORDER BY b.created_at DESC`,
       [req.user.id]
@@ -170,7 +233,8 @@ router.get('/my-bids', authenticate, authorize(['BIDDER']), async (req, res) => 
         ends_at: row.ends_at,
         winner_id: row.winner_id,
         final_price: row.final_price,
-        status: row.status
+        status: row.status,
+        is_paid: Boolean(row.is_paid)
       }
     }));
     

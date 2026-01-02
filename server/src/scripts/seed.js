@@ -1,6 +1,8 @@
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import pool from '../config/db.js';
+import { execSync } from 'child_process';
+import path from 'path';
 
 dotenv.config();
 
@@ -12,9 +14,15 @@ async function run() {
     // Drop existing tables to ensure a fresh start
     // Disable foreign key checks to allow dropping in any order
     await conn.query('SET FOREIGN_KEY_CHECKS = 0');
+    // Drop primary domain tables
     await conn.query('DROP TABLE IF EXISTS bids');
     await conn.query('DROP TABLE IF EXISTS auctions');
     await conn.query('DROP TABLE IF EXISTS users');
+    // Also drop auxiliary/payment tables so seed starts truly fresh
+    await conn.query('DROP TABLE IF EXISTS transactions');
+    await conn.query('DROP TABLE IF EXISTS wallet_topups');
+    await conn.query('DROP TABLE IF EXISTS notifications');
+    await conn.query('DROP TABLE IF EXISTS password_resets');
     await conn.query('SET FOREIGN_KEY_CHECKS = 1');
 
     // Create tables
@@ -124,6 +132,19 @@ async function run() {
     await conn.commit();
     // eslint-disable-next-line no-console
     console.log('Database seeded.');
+
+    // Run post-seed migrations to ensure wallet/payment schema is present
+    try {
+      const base = path.join(process.cwd(), 'server');
+      console.log('Running post-seed migrations...');
+      execSync('node src/scripts/migrate_add_payments.js', { stdio: 'inherit' });
+      execSync('node src/scripts/migrate_add_wallet_topups.js', { stdio: 'inherit' });
+      execSync('node src/scripts/migrate_add_is_paid.js', { stdio: 'inherit' });
+      execSync('node src/scripts/migrate_add_password_resets.js', { stdio: 'inherit' });
+      console.log('Post-seed migrations complete.');
+    } catch (migErr) {
+      console.error('Post-seed migration error', migErr && migErr.stack ? migErr.stack : migErr);
+    }
   } catch (e) {
     await conn.rollback();
     // eslint-disable-next-line no-console

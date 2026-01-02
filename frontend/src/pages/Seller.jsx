@@ -262,7 +262,7 @@ const SellerContent = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Starting Price (Br)
+                  Starting Price (ETB)
                 </label>
                 <input
                   type="number"
@@ -289,7 +289,7 @@ const SellerContent = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Min Increment (Br)
+                  Min Increment (ETB)
                 </label>
                 <input
                   type="number"
@@ -302,7 +302,7 @@ const SellerContent = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Max Increment (Br) (optional)
+                  Max Increment (ETB) (optional)
                 </label>
                 <input
                   type="number"
@@ -315,7 +315,7 @@ const SellerContent = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Reserve Price (Br) - minimum acceptable price
+                  Reserve Price (ETB) - minimum acceptable price
                 </label>
                 <input
                   type="number"
@@ -329,7 +329,7 @@ const SellerContent = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Buy-It-Now Price (Br) - optional
+                  Buy-It-Now Price (ETB) - optional
                 </label>
                 <input
                   type="number"

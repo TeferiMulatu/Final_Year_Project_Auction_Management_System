@@ -15,6 +15,7 @@ const BidderContent = () => {
   // State for managing bids data and loading status
   const [bids, setBids] = useState([]) // Array of user's bids
   const [loading, setLoading] = useState(false) // Loading state for API calls
+  const [auctionHistories, setAuctionHistories] = useState({}) // { [auctionId]: [bids...] }
 
   // Load bids when component mounts
   useEffect(() => {
@@ -46,6 +47,18 @@ const BidderContent = () => {
       console.error('Failed to load bids:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Load full auction bid history for a given auction id (cached)
+  const loadAuctionHistory = async (auctionId) => {
+    if (auctionHistories[auctionId]) return // already loaded
+    try {
+      const { data } = await api.get(`/auctions/${auctionId}`)
+      setAuctionHistories(prev => ({ ...prev, [auctionId]: data.bids || [] }))
+    } catch (err) {
+      console.error('Failed to load auction history', err)
+      setAuctionHistories(prev => ({ ...prev, [auctionId]: [] }))
     }
   }
 
@@ -82,10 +95,11 @@ const BidderContent = () => {
 
   // Simulate payment for a won auction
   const payForAuction = async (auction) => {
-    const confirmPay = window.confirm(`Pay ${formatCurrency(auction.current_price)} for ${auction.title}?`)
+    const payAmount = Number(auction.final_price ?? auction.current_price)
+    const confirmPay = window.confirm(`Pay ${formatCurrency(payAmount)} for ${auction.title}?`)
     if (!confirmPay) return
     try {
-      const { data } = await api.post('/payments', { auction_id: auction.id, amount: auction.current_price, method: 'card' })
+      const { data } = await api.post('/payments', { auction_id: auction.id, amount: payAmount, method: 'card' })
       addToast({ message: data.message || 'Payment successful (simulated)', type: 'success' })
       loadBids()
     } catch (err) {
@@ -145,6 +159,9 @@ const BidderContent = () => {
                     Current Price
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Seller
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Deposit Paid
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -194,6 +211,10 @@ const BidderContent = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {formatCurrency(bid.auction.current_price)}
                       </td>
+                      {/* Seller Name */}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {bid.auction.seller_name || '-'}
+                      </td>
                       {/* Deposit Paid */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {bid.deposit_paid ? formatCurrency(bid.deposit_paid) : '-'}
@@ -217,23 +238,40 @@ const BidderContent = () => {
                       
                       {/* Action Link to View Auction or Pay if won */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        {getBidStatus(bid) === 'Won' ? (
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => payForAuction(bid.auction)}
-                              className="bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-700"
-                            >
-                              Pay
-                            </button>
-                            <Link to={`/auction/${bid.auction.id}`} className="text-indigo-600 hover:text-indigo-900">View</Link>
-                          </div>
-                        ) : (
-                          <Link
-                            to={`/auction/${bid.auction.id}`}
-                            className="text-indigo-600 hover:text-indigo-900"
+                        <div className="flex items-center space-x-2">
+                          {getBidStatus(bid) === 'Won' && (
+                            bid.auction.is_paid ? (
+                              <span className="inline-flex items-center px-3 py-1 text-sm font-semibold rounded-md bg-green-50 text-green-800">Paid</span>
+                            ) : (
+                              <button
+                                onClick={() => payForAuction(bid.auction)}
+                                className="bg-green-600 text-white px-3 py-1 rounded-md hover:bg-green-700"
+                              >
+                                Pay
+                              </button>
+                            )
+                          )}
+                          <Link to={`/auction/${bid.auction.id}`} className="text-indigo-600 hover:text-indigo-900">View</Link>
+                          <button
+                            onClick={() => loadAuctionHistory(bid.auction.id)}
+                            className="text-sm text-gray-600 hover:underline"
                           >
-                            View Auction
-                          </Link>
+                            Show Auction History
+                          </button>
+                        </div>
+                        {/* Inline auction history (if loaded) */}
+                        {auctionHistories[bid.auction.id] && auctionHistories[bid.auction.id].length > 0 && (
+                          <div className="mt-3 bg-gray-50 p-3 rounded">
+                            <div className="text-sm font-medium text-gray-700 mb-2">Auction Bids</div>
+                            <div className="space-y-2">
+                              {auctionHistories[bid.auction.id].map((hb) => (
+                                <div key={hb.id} className="flex justify-between text-sm text-gray-800">
+                                  <div>{formatCurrency(hb.amount)} by {hb.bidder_name || 'Unknown'}</div>
+                                  <div className="text-gray-500">{new Date(hb.created_at).toLocaleString()}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </td>
                     </tr>

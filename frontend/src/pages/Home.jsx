@@ -57,8 +57,21 @@ const Home = () => {
 
     socket.on('auction_created', newAuctionHandler)
 
+    const closedHandler = (payload) => {
+      if (!payload || !payload.auctionId) return
+      setItems(prev => prev.map(a => {
+        if (Number(a.id) === Number(payload.auctionId)) {
+          return { ...a, status: 'CLOSED', ends_at: new Date().toISOString(), current_price: payload.finalPrice || a.current_price }
+        }
+        return a
+      }))
+    }
+
+    socket.on('auction_closed', closedHandler)
+
     return () => {
       socket.off('auction_created', newAuctionHandler)
+      socket.off('auction_closed', closedHandler)
     }
   }, [])
 

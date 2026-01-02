@@ -11,6 +11,11 @@ import Bidder from './pages/Bidder.jsx'
 import NotFound from './pages/NotFound.jsx'
 import About from './pages/About.jsx'
 import FAQ from './pages/FAQ.jsx'
+import Wallet from './pages/Wallet.jsx'
+import TopUp from './pages/TopUp.jsx'
+import AdminTopups from './pages/AdminTopups.jsx'
+import ForgotPassword from './pages/ForgotPassword.jsx'
+import ResetPassword from './pages/ResetPassword.jsx'
 
 const App = () => {
   return (
@@ -20,6 +25,8 @@ const App = () => {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/register" element={<Register />} />
           <Route path="/auction/:id" element={<AuctionDetail />} />
           <Route path="/admin" element={<Admin />} />
@@ -27,6 +34,9 @@ const App = () => {
           <Route path="/bidder" element={<Bidder />} />
           <Route path="/about" element={<About />} />
           <Route path="/faq" element={<FAQ />} />
+          <Route path="/wallet" element={<Wallet />} />
+          <Route path="/topup" element={<TopUp />} />
+          <Route path="/admin/topups" element={<AdminTopups />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>
