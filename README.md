@@ -123,16 +123,16 @@ A full-stack auction platform built with React, Express.js, and MySQL. This repo
 
 ```
 finalproject/
-├── frontend/          # React frontend application
-│   ├── src/
-│   ├── public/
+├── frontend/          # React frontend application
+│   ├── src/
+│   ├── public/
 │   ├── package.json
 │   └── vite.config.js
-├── server/          # Express.js backend API
+├── server/           # Express.js backend API
 │   ├── src/
 │   ├── package.json
 │   └── .env.example
-├── package.json          # Root package.json for managing both apps
+├── package.json        # Root package.json for managing both apps
 └── README.md
 ```
 
