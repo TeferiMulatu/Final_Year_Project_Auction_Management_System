@@ -113,10 +113,6 @@ DB_HOST=localhost
 DB_USER=root
 DB_PASSWORD=your_password
 DB_NAME=maun_auction
-# MAU Auction Platform
 
-A full-stack auction platform built with React, Express.js, and MySQL. This repository contains a Vite-powered React frontend and an Express backend with real-time bidding powered by Socket.IO.
-
-![MAU Auction screenshot](https://github.com/TeferiMulatu/Final_Year_Project_Auction_Management_System/blob/main/img2.png)
 
 
